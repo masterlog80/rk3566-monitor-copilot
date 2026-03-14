@@ -27,11 +27,9 @@ const elCpuFreq    = $("cpu-freq");
 const elCpuPct     = $("cpu-percent");
 const elMemPct     = $("mem-percent");
 const elCpuTemp    = $("cpu-temp");
-const elDiskPct    = $("disk-percent");
+const elNpuPct     = $("npu-percent");
 const elMemUsed    = $("mem-used");
 const elMemTotal   = $("mem-total");
-const elDiskUsed   = $("disk-used");
-const elDiskTotal  = $("disk-total");
 const elSwapPct    = $("swap-percent");
 const elSwapUsed   = $("swap-used");
 const elSwapTotal  = $("swap-total");
@@ -164,7 +162,7 @@ function makeTempLine(id) {
 // ── Instantiate charts ────────────────────────────────────────────────────
 const cpuDonut   = makeDonut("cpuChart",  "CPU",  "#58a6ff");
 const memDonut   = makeDonut("memChart",  "Mem",  "#3fb950");
-const diskDonut  = makeDonut("diskChart", "Disk", "#bc8cff");
+const npuDonut   = makeDonut("npuChart",  "NPU",  "#bc8cff");
 const tempLine   = makeTempLine("tempChart");
 const histChart  = makeLine("historyChart", [
   { label: "CPU %",    color: "#58a6ff" },
@@ -210,7 +208,7 @@ function pushTempHistory(ts, tempVal) {
 
 // ── Render metrics ────────────────────────────────────────────────────────
 function render(data) {
-  const { cpu, memory, disk, system, timestamp } = data;
+  const { cpu, memory, npu, system, timestamp } = data;
 
   // Info bar
   elHostname.textContent  = system.hostname || "–";
@@ -239,11 +237,14 @@ function render(data) {
     elCpuTemp.textContent = "N/A";
   }
 
-  // Disk
-  elDiskPct.textContent   = pct(disk.percent);
-  elDiskUsed.textContent  = disk.used_gb + " GB";
-  elDiskTotal.textContent = disk.total_gb + " GB";
-  updateDonut(diskDonut, disk.percent);
+  // NPU
+  if (npu && npu.percent != null) {
+    elNpuPct.textContent = pct(npu.percent);
+    updateDonut(npuDonut, npu.percent);
+  } else {
+    elNpuPct.textContent = "N/A";
+    updateDonut(npuDonut, 0);
+  }
 
   // Swap
   elSwapPct.textContent   = pct(memory.swap_percent);
