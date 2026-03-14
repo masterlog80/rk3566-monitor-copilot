@@ -1,0 +1,244 @@
+/* =====================================================================
+   RK3566 Monitor – Styles
+   ===================================================================== */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg:          #0d1117;
+  --surface:     #161b22;
+  --surface-2:   #21262d;
+  --border:      #30363d;
+  --text:        #c9d1d9;
+  --text-dim:    #8b949e;
+  --accent:      #58a6ff;
+  --green:       #3fb950;
+  --yellow:      #d29922;
+  --orange:      #f0883e;
+  --red:         #f85149;
+  --purple:      #bc8cff;
+  --radius:      10px;
+  --shadow:      0 2px 12px rgba(0,0,0,.4);
+  --font:        'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* ── Topbar ─────────────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .75rem 1.5rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.brand-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.topbar-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: .85rem;
+  color: var(--text-dim);
+}
+
+.badge {
+  padding: .2rem .65rem;
+  border-radius: 999px;
+  font-size: .75rem;
+  font-weight: 600;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  transition: background .3s, color .3s;
+}
+
+.badge.connected {
+  background: rgba(63, 185, 80, .15);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.badge.error {
+  background: rgba(248, 81, 73, .15);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+/* ── Dashboard layout ───────────────────────────────────────────────── */
+.dashboard {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ── Info bar ────────────────────────────────────────────────────────── */
+.info-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .85rem 1.25rem;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.info-label {
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-dim);
+}
+
+.info-value {
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ── Cards grid ─────────────────────────────────────────────────────── */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+.card.wide {
+  width: 100%;
+}
+
+.card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .5rem;
+}
+
+.card-title {
+  font-size: .85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-dim);
+}
+
+.metric-value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+/* ── Chart wrappers ─────────────────────────────────────────────────── */
+.chart-wrap {
+  position: relative;
+  height: 140px;
+}
+
+.chart-wrap.tall {
+  height: 220px;
+}
+
+/* ── Sub-stats (used / total) ───────────────────────────────────────── */
+.sub-stats {
+  font-size: .8rem;
+  color: var(--text-dim);
+  display: flex;
+  gap: .25rem;
+}
+
+.sep { color: var(--border); }
+
+/* ── History section ────────────────────────────────────────────────── */
+.history {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Swap section ───────────────────────────────────────────────────── */
+.swap-row {
+  display: flex;
+  flex-direction: column;
+}
+
+.progress-wrap {
+  height: 10px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--purple));
+  border-radius: 999px;
+  transition: width .5s ease;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────── */
+.footer {
+  text-align: center;
+  padding: 1rem 1.5rem;
+  font-size: .78rem;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .topbar-info { font-size: .75rem; }
+  .metric-value { font-size: 1.3rem; }
+  .cards { grid-template-columns: 1fr; }
+}

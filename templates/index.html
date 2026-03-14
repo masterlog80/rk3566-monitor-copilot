@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RK3566 System Monitor</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <!-- Chart.js -->
+  <script src="/static/chart.umd.min.js"></script>
+  <!-- Socket.IO client -->
+  <script src="/static/socket.io.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-brand">
+      <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <path d="M8 21h8M12 17v4"/>
+      </svg>
+      <span>RK3566 Monitor</span>
+    </div>
+    <div class="topbar-info">
+      <span id="hostname">–</span>
+      <span class="badge" id="conn-status">Connecting…</span>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <!-- System Info Bar -->
+    <section class="info-bar">
+      <div class="info-item">
+        <span class="info-label">Hardware</span>
+        <span class="info-value" id="hw-model">–</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Uptime</span>
+        <span class="info-value" id="uptime">–</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">CPU Cores</span>
+        <span class="info-value" id="cpu-count">–</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">CPU Freq</span>
+        <span class="info-value" id="cpu-freq">–</span>
+      </div>
+    </section>
+
+    <!-- Metric Cards -->
+    <section class="cards">
+      <!-- CPU Card -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">CPU Usage</h2>
+          <span class="metric-value" id="cpu-percent">–</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="cpuChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Memory Card -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Memory</h2>
+          <span class="metric-value" id="mem-percent">–</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="memChart"></canvas>
+        </div>
+        <div class="sub-stats">
+          <span id="mem-used">–</span>
+          <span class="sep">/</span>
+          <span id="mem-total">–</span>
+        </div>
+      </div>
+
+      <!-- Temperature Card -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">CPU Temperature</h2>
+          <span class="metric-value" id="cpu-temp">–</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="tempChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Disk Card -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Disk Usage</h2>
+          <span class="metric-value" id="disk-percent">–</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="diskChart"></canvas>
+        </div>
+        <div class="sub-stats">
+          <span id="disk-used">–</span>
+          <span class="sep">/</span>
+          <span id="disk-total">–</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- History Charts -->
+    <section class="history">
+      <div class="card wide">
+        <div class="card-header">
+          <h2 class="card-title">CPU &amp; Memory History (last 60 s)</h2>
+        </div>
+        <div class="chart-wrap tall">
+          <canvas id="historyChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Swap Row -->
+    <section class="swap-row">
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Swap</h2>
+          <span class="metric-value" id="swap-percent">–</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar" id="swap-bar"></div>
+        </div>
+        <div class="sub-stats">
+          <span id="swap-used">–</span>
+          <span class="sep">/</span>
+          <span id="swap-total">–</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>RK3566 Monitor &copy; 2025 &mdash; Real-time system dashboard</span>
+    <span id="last-update">–</span>
+  </footer>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>
