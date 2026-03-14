@@ -2,6 +2,7 @@ import csv
 import io
 import os
 import logging
+import re
 import time
 import psutil
 from flask import Flask, jsonify, render_template, Response
@@ -67,6 +68,35 @@ def _get_cpu_temp() -> float | None:
     return None
 
 
+def _get_npu_usage() -> float | None:
+    """Return the NPU utilisation percentage for Rockchip RK3566 (and similar).
+
+    Tries the kernel debug interface first, then the devfreq load sysfs node.
+    Returns a float in [0, 100] or None if the value cannot be read.
+    """
+    # Path exposed by the rknpu2 kernel driver (most RK356x / RK3588 boards)
+    debug_path = "/sys/kernel/debug/rknpu/load"
+    raw = _read_proc_file(debug_path)
+    if raw:
+        # Format: "NPU load:  Core0: 67%, Core1:  0%, Core2:  0%,"
+        percentages = re.findall(r"(\d+)\s*%", raw)
+        if percentages:
+            values = [int(p) for p in percentages]
+            # Average across all reported cores
+            return round(sum(values) / len(values), 1)
+
+    # Alternative: devfreq load node (some BSP kernels)
+    devfreq_path = "/sys/class/devfreq/fde40000.npu/device/load"
+    raw = _read_proc_file(devfreq_path)
+    if raw:
+        try:
+            return round(float(raw.strip().rstrip("%")), 1)
+        except ValueError:
+            pass
+
+    return None
+
+
 def _get_uptime_seconds() -> int:
     """Return system uptime in seconds from /proc/uptime."""
     raw = _read_proc_file("/proc/uptime")
@@ -102,10 +132,9 @@ def collect_metrics() -> dict:
     mem = psutil.virtual_memory()
     swap = psutil.swap_memory()
 
-    disk = psutil.disk_usage("/")
-
     uptime_sec = _get_uptime_seconds()
     cpu_temp = _get_cpu_temp()
+    npu_percent = _get_npu_usage()
 
     # /proc/cpuinfo – grab Model name / Hardware line
     hw_model = "Unknown"
@@ -137,11 +166,8 @@ def collect_metrics() -> dict:
             "swap_used_mb": round(swap.used / 1024 / 1024, 1),
             "swap_percent": swap.percent,
         },
-        "disk": {
-            "total_gb": round(disk.total / 1024 / 1024 / 1024, 2),
-            "used_gb": round(disk.used / 1024 / 1024 / 1024, 2),
-            "free_gb": round(disk.free / 1024 / 1024 / 1024, 2),
-            "percent": disk.percent,
+        "npu": {
+            "percent": npu_percent,
         },
         "system": {
             "uptime_seconds": uptime_sec,
@@ -193,6 +219,16 @@ def api_memory():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/npu")
+def api_npu():
+    try:
+        m = collect_metrics()
+        return jsonify(m["npu"])
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Failed to collect NPU metrics")
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/system")
 def api_system():
     try:
@@ -224,11 +260,8 @@ def api_metrics_csv():
         writer.writerow(["swap_percent", data["memory"]["swap_percent"], "%"])
         writer.writerow(["swap_used_mb", data["memory"]["swap_used_mb"], "MB"])
         writer.writerow(["swap_total_mb", data["memory"]["swap_total_mb"], "MB"])
-        # Disk
-        writer.writerow(["disk_percent", data["disk"]["percent"], "%"])
-        writer.writerow(["disk_used_gb", data["disk"]["used_gb"], "GB"])
-        writer.writerow(["disk_total_gb", data["disk"]["total_gb"], "GB"])
-        writer.writerow(["disk_free_gb", data["disk"]["free_gb"], "GB"])
+        # NPU
+        writer.writerow(["npu_percent", data["npu"]["percent"], "%"])
         # System
         writer.writerow(["hostname", data["system"]["hostname"], ""])
         writer.writerow(["hardware", data["system"]["hardware"], ""])

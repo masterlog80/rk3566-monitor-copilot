@@ -1,6 +1,6 @@
 # RK3566 System Monitor
 
-A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based single-board computers. Displays CPU usage, memory, temperature, disk, and uptime with live Chart.js visualizations served over WebSockets.
+A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based single-board computers. Displays CPU usage, memory, temperature, NPU usage, and uptime with live Chart.js visualizations served over WebSockets.
 
 ## Screenshot
 
@@ -10,7 +10,8 @@ A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based
 
 - **Real-time metrics** via Socket.IO WebSocket (2-second refresh)
 - **REST API** fallback with polling support
-- **Charts**: donut gauges for CPU / memory / disk, line chart for temperature history, combined history chart
+- **Charts**: donut gauges for CPU / memory / NPU, line chart for temperature history, combined history chart
+- **NPU monitoring**: real-time Neural Processing Unit utilisation via the `rknpu2` kernel driver
 - **System info**: hostname, hardware model, uptime, CPU frequency
 - **CSV export**: one-click download of a full metrics snapshot as a `.csv` file
 - **Fully containerised** with Docker and Docker Compose
@@ -83,10 +84,7 @@ The file contains the following fields:
 | `swap_percent`       | %       | Swap utilisation              |
 | `swap_used_mb`       | MB      | Swap in use                   |
 | `swap_total_mb`      | MB      | Total swap                    |
-| `disk_percent`       | %       | Disk utilisation              |
-| `disk_used_gb`       | GB      | Disk space used               |
-| `disk_total_gb`      | GB      | Total disk size               |
-| `disk_free_gb`       | GB      | Free disk space               |
+| `npu_percent`        | %       | NPU utilisation (if available)|
 | `hostname`           |         | System hostname               |
 | `hardware`           |         | Hardware / CPU model          |
 | `uptime_seconds`     | s       | Uptime in seconds             |
@@ -104,6 +102,7 @@ You can also download the CSV directly via the API endpoint `GET /api/metrics/cs
 | GET    | `/api/metrics/csv`  | All metrics as a downloadable CSV file       |
 | GET    | `/api/cpu`          | CPU metrics only                             |
 | GET    | `/api/memory`       | Memory metrics only                          |
+| GET    | `/api/npu`          | NPU metrics only                             |
 | GET    | `/api/system`       | System info only                             |
 | GET    | `/health`           | Health check (`{"status":"ok"}`)             |
 
