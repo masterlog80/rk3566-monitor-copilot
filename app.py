@@ -1,8 +1,10 @@
+import csv
+import io
 import os
 import logging
 import time
 import psutil
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, Response
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
 
@@ -198,6 +200,50 @@ def api_system():
         return jsonify(m["system"])
     except Exception as exc:  # noqa: BLE001
         logger.exception("Failed to collect system metrics")
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/metrics/csv")
+def api_metrics_csv():
+    try:
+        data = collect_metrics()
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["metric", "value", "unit"])
+        # CPU
+        writer.writerow(["cpu_percent", data["cpu"]["percent"], "%"])
+        writer.writerow(["cpu_count", data["cpu"]["count"], "cores"])
+        writer.writerow(["cpu_freq_mhz", data["cpu"]["freq_mhz"], "MHz"])
+        writer.writerow(["cpu_freq_max_mhz", data["cpu"]["freq_max_mhz"], "MHz"])
+        writer.writerow(["cpu_temperature_c", data["cpu"]["temperature_c"], "°C"])
+        # Memory
+        writer.writerow(["memory_percent", data["memory"]["percent"], "%"])
+        writer.writerow(["memory_used_mb", data["memory"]["used_mb"], "MB"])
+        writer.writerow(["memory_total_mb", data["memory"]["total_mb"], "MB"])
+        writer.writerow(["memory_available_mb", data["memory"]["available_mb"], "MB"])
+        writer.writerow(["swap_percent", data["memory"]["swap_percent"], "%"])
+        writer.writerow(["swap_used_mb", data["memory"]["swap_used_mb"], "MB"])
+        writer.writerow(["swap_total_mb", data["memory"]["swap_total_mb"], "MB"])
+        # Disk
+        writer.writerow(["disk_percent", data["disk"]["percent"], "%"])
+        writer.writerow(["disk_used_gb", data["disk"]["used_gb"], "GB"])
+        writer.writerow(["disk_total_gb", data["disk"]["total_gb"], "GB"])
+        writer.writerow(["disk_free_gb", data["disk"]["free_gb"], "GB"])
+        # System
+        writer.writerow(["hostname", data["system"]["hostname"], ""])
+        writer.writerow(["hardware", data["system"]["hardware"], ""])
+        writer.writerow(["uptime_seconds", data["system"]["uptime_seconds"], "s"])
+        writer.writerow(["uptime_human", data["system"]["uptime_human"], ""])
+        writer.writerow(["timestamp", data["timestamp"], "unix"])
+        output.seek(0)
+        filename = f"rk3566_metrics_{data['timestamp']}.csv"
+        return Response(
+            output.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Failed to export metrics as CSV")
         return jsonify({"error": str(exc)}), 500
 
 

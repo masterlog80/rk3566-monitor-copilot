@@ -4,7 +4,7 @@ A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based
 
 ## Screenshot
 
-![RK3566 System Monitor Dashboard](docs/screenshot.png)
+![RK3566 System Monitor Dashboard](https://github.com/user-attachments/assets/e59bd797-58d9-41d8-85f1-8b613252e1e9)
 
 ## Features
 
@@ -12,6 +12,7 @@ A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based
 - **REST API** fallback with polling support
 - **Charts**: donut gauges for CPU / memory / disk, line chart for temperature history, combined history chart
 - **System info**: hostname, hardware model, uptime, CPU frequency
+- **CSV export**: one-click download of a full metrics snapshot as a `.csv` file
 - **Fully containerised** with Docker and Docker Compose
 - **Responsive** dark-themed UI – works on desktop and mobile
 
@@ -62,16 +63,49 @@ Copy `.env` and adjust as needed:
 | `FLASK_ENV`  | `production`                | Flask environment                 |
 | `LOG_LEVEL`  | `INFO`                      | Python logging level              |
 
+## CSV Export
+
+Click the **⬇ Export CSV** button in the top-right corner of the dashboard to download a snapshot of all current metrics as a `.csv` file.
+
+The file contains the following fields:
+
+| Metric               | Unit    | Description                   |
+|----------------------|---------|-------------------------------|
+| `cpu_percent`        | %       | Current CPU utilisation       |
+| `cpu_count`          | cores   | Logical CPU core count        |
+| `cpu_freq_mhz`       | MHz     | Current CPU frequency         |
+| `cpu_freq_max_mhz`   | MHz     | Maximum CPU frequency         |
+| `cpu_temperature_c`  | °C      | CPU temperature (if available)|
+| `memory_percent`     | %       | RAM utilisation               |
+| `memory_used_mb`     | MB      | RAM in use                    |
+| `memory_total_mb`    | MB      | Total RAM                     |
+| `memory_available_mb`| MB      | Available RAM                 |
+| `swap_percent`       | %       | Swap utilisation              |
+| `swap_used_mb`       | MB      | Swap in use                   |
+| `swap_total_mb`      | MB      | Total swap                    |
+| `disk_percent`       | %       | Disk utilisation              |
+| `disk_used_gb`       | GB      | Disk space used               |
+| `disk_total_gb`      | GB      | Total disk size               |
+| `disk_free_gb`       | GB      | Free disk space               |
+| `hostname`           |         | System hostname               |
+| `hardware`           |         | Hardware / CPU model          |
+| `uptime_seconds`     | s       | Uptime in seconds             |
+| `uptime_human`       |         | Human-readable uptime         |
+| `timestamp`          | unix    | Unix epoch of the snapshot    |
+
+You can also download the CSV directly via the API endpoint `GET /api/metrics/csv`.
+
 ## API Endpoints
 
-| Method | Path           | Description                    |
-|--------|----------------|--------------------------------|
-| GET    | `/`            | Dashboard UI                   |
-| GET    | `/api/metrics` | All metrics (JSON)             |
-| GET    | `/api/cpu`     | CPU metrics only               |
-| GET    | `/api/memory`  | Memory metrics only            |
-| GET    | `/api/system`  | System info only               |
-| GET    | `/health`      | Health check (`{"status":"ok"}`) |
+| Method | Path                | Description                                  |
+|--------|---------------------|----------------------------------------------|
+| GET    | `/`                 | Dashboard UI                                 |
+| GET    | `/api/metrics`      | All metrics (JSON)                           |
+| GET    | `/api/metrics/csv`  | All metrics as a downloadable CSV file       |
+| GET    | `/api/cpu`          | CPU metrics only                             |
+| GET    | `/api/memory`       | Memory metrics only                          |
+| GET    | `/api/system`       | System info only                             |
+| GET    | `/health`           | Health check (`{"status":"ok"}`)             |
 
 WebSocket events (Socket.IO):
 
