@@ -2,6 +2,10 @@
 
 A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based single-board computers. Displays CPU usage, memory, temperature, disk, and uptime with live Chart.js visualizations served over WebSockets.
 
+## Screenshot
+
+![RK3566 System Monitor Dashboard](docs/screenshot.png)
+
 ## Features
 
 - **Real-time metrics** via Socket.IO WebSocket (2-second refresh)
