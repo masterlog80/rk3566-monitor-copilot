@@ -144,6 +144,9 @@ def _append_metrics_to_csv(data: dict) -> None:
     the file is retained between runs.
     """
     file_path = METRICS_LOG_FILE
+    parent_dir = os.path.dirname(file_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     write_header = not os.path.exists(file_path)
     try:
         with open(file_path, "a", newline="") as fh:
