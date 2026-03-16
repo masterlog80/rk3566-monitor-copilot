@@ -78,7 +78,9 @@ def _get_npu_usage() -> float | None:
     debug_path = "/sys/kernel/debug/rknpu/load"
     raw = _read_proc_file(debug_path)
     if raw:
-        # Format: "NPU load:  Core0: 67%, Core1:  0%, Core2:  0%,"
+        # Handles both formats:
+        #   Simple:     "NPU load:  0%"
+        #   Multi-core: "NPU load:  Core0: 67%, Core1:  0%, Core2:  0%,"
         percentages = re.findall(r"(\d+)\s*%", raw)
         if percentages:
             values = [int(p) for p in percentages]
