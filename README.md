@@ -31,6 +31,7 @@ docker compose -f docker-compose.yml up -d --remove-orphans
 - **NPU monitoring**: real-time Neural Processing Unit utilisation via the `rknpu2` kernel driver
 - **System info**: hostname, hardware model, uptime, CPU frequency
 - **CSV export**: one-click download of a full metrics snapshot as a `.csv` file
+- **Local metrics log**: graph values (CPU%, memory%, temperature, NPU%) are automatically appended to a local CSV file every 2 seconds
 - **Fully containerised** with Docker and Docker Compose
 - **Responsive** dark-themed UI – works on desktop and mobile
 
@@ -59,13 +60,14 @@ docker run -d \
 
 Copy `.env` and adjust as needed:
 
-| Variable     | Default                     | Description                       |
-|--------------|-----------------------------|-----------------------------------|
-| `HOST`       | `0.0.0.0`                   | Bind address                      |
-| `PORT`       | `5000`                      | TCP port                          |
-| `SECRET_KEY` | `change-me-in-production`   | Flask session secret (change this)|
-| `FLASK_ENV`  | `production`                | Flask environment                 |
-| `LOG_LEVEL`  | `INFO`                      | Python logging level              |
+| Variable          | Default                     | Description                                          |
+|-------------------|-----------------------------|------------------------------------------------------|
+| `HOST`            | `0.0.0.0`                   | Bind address                                         |
+| `PORT`            | `5000`                      | TCP port                                             |
+| `SECRET_KEY`      | `change-me-in-production`   | Flask session secret (change this)                   |
+| `FLASK_ENV`       | `production`                | Flask environment                                    |
+| `LOG_LEVEL`       | `INFO`                      | Python logging level                                 |
+| `METRICS_LOG_FILE`| `metrics_log.csv`           | Path of the local CSV file that logs graph values. When using Docker Compose this is automatically set to `/data/metrics_log.csv` (mapped to `./data/` on the host). |
 
 ## CSV Export
 
@@ -100,6 +102,30 @@ The file contains the following fields:
 
 You can also download the CSV directly via the API endpoint `GET /api/metrics/csv`.
 
+## Local Metrics Log
+
+In addition to the on-demand CSV export, the monitor **automatically appends** the graph values to a local CSV file every 2 seconds while the server is running. The file records the metrics that are plotted in the dashboard charts:
+
+| Column            | Unit  | Description                       |
+|-------------------|-------|-----------------------------------|
+| `timestamp`       | unix  | Unix epoch of the sample          |
+| `datetime`        |       | Human-readable local date/time    |
+| `cpu_percent`     | %     | CPU utilisation                   |
+| `memory_percent`  | %     | RAM utilisation                   |
+| `temperature_c`   | °C    | CPU temperature (null if N/A)     |
+| `npu_percent`     | %     | NPU utilisation (null if N/A)     |
+
+The file path is controlled by the `METRICS_LOG_FILE` environment variable (default `metrics_log.csv`).  
+When running via Docker Compose it is automatically written to `/data/metrics_log.csv` inside the container, which is bind-mounted to `./data/metrics_log.csv` on the host so the log **persists across container restarts**.
+
+Example log snippet:
+
+```
+timestamp,datetime,cpu_percent,memory_percent,temperature_c,npu_percent
+1714000000,2024-04-25 10:06:40,12.3,45.1,52.0,0.0
+1714000002,2024-04-25 10:06:42,14.7,45.2,52.1,0.0
+```
+
 ## API Endpoints
 
 | Method | Path                | Description                                  |
@@ -133,10 +159,11 @@ rk3566-monitor-copilot/
 ├── .env                 # Environment variables
 ├── templates/
 │   └── index.html       # Dashboard HTML
-└── static/
-    ├── styles.css       # Responsive dark-theme CSS
-    ├── script.js        # Chart.js + Socket.IO client
-    └── favicon.svg
+├── static/
+│   ├── styles.css       # Responsive dark-theme CSS
+│   ├── script.js        # Chart.js + Socket.IO client
+│   └── favicon.svg
+└── data/                # Auto-created at runtime; contains metrics_log.csv
 ```
 
 ## Requirements

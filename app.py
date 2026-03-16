@@ -23,6 +23,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", 5000))
+METRICS_LOG_FILE = os.getenv("METRICS_LOG_FILE", "metrics_log.csv")
 
 
 # ---------------------------------------------------------------------------
@@ -123,6 +124,43 @@ def _format_uptime(seconds: int) -> str:
         parts.append(f"{minutes}m")
     parts.append(f"{secs}s")
     return " ".join(parts)
+
+
+_CSV_HEADER = [
+    "timestamp",
+    "datetime",
+    "cpu_percent",
+    "memory_percent",
+    "temperature_c",
+    "npu_percent",
+]
+
+
+def _append_metrics_to_csv(data: dict) -> None:
+    """Append graph-relevant metrics (timestamp, cpu%, mem%, temp, npu%) to the local CSV log.
+
+    The file is created with a header row on first write and appended to on
+    subsequent calls, so the full history accumulates across restarts only when
+    the file is retained between runs.
+    """
+    file_path = METRICS_LOG_FILE
+    write_header = not os.path.exists(file_path)
+    try:
+        with open(file_path, "a", newline="") as fh:
+            writer = csv.writer(fh)
+            if write_header:
+                writer.writerow(_CSV_HEADER)
+            ts = data["timestamp"]
+            writer.writerow([
+                ts,
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)),
+                data["cpu"]["percent"],
+                data["memory"]["percent"],
+                data["cpu"]["temperature_c"],
+                data["npu"]["percent"],
+            ])
+    except OSError:
+        logger.exception("Failed to write metrics to CSV log '%s'", file_path)
 
 
 def collect_metrics() -> dict:
@@ -343,6 +381,7 @@ def _metrics_broadcast_task():
         try:
             data = collect_metrics()
             socketio.emit("metrics", data)
+            _append_metrics_to_csv(data)
         except Exception:  # noqa: BLE001
             logger.exception("Background metrics broadcast error")
         socketio.sleep(2)

@@ -10,10 +10,14 @@ services:
       - "5000:5000"
     env_file:
       - .env
-    # Grant read access to host /proc and /sys for real hardware metrics
+    environment:
+      - METRICS_LOG_FILE=/data/metrics_log.csv
+    # Grant read access to host /proc and /sys for real hardware metrics.
+    # The ./data directory is mounted read-write so the CSV log persists.
     volumes:
       - /proc:/proc:ro
       - /sys:/sys:ro
+      - ./data:/data
     restart: unless-stopped
 
 ############
