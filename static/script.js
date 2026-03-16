@@ -10,7 +10,7 @@
 const POLL_INTERVAL_MS = (window.SERVER_CONFIG && window.SERVER_CONFIG.pollIntervalMs)
   ? window.SERVER_CONFIG.pollIntervalMs
   : 10000;                                // fallback: 10 s
-const MAX_HISTORY_SECONDS = 3600;       // retain up to 1 hour of data
+const MAX_HISTORY_SECONDS = 1209600;    // retain up to 2 weeks of data
 const MAX_HISTORY_LEN = Math.ceil(MAX_HISTORY_SECONDS * 1000 / POLL_INTERVAL_MS);
 
 // ── History window (seconds shown in chart) ───────────────────────────
