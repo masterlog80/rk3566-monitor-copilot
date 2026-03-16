@@ -88,6 +88,10 @@ The file contains the following fields:
 | `swap_percent`       | %       | Swap utilisation              |
 | `swap_used_mb`       | MB      | Swap in use                   |
 | `swap_total_mb`      | MB      | Total swap                    |
+| `disk_percent`       | %       | Disk (/) utilisation          |
+| `disk_used_gb`       | GB      | Disk (/) space in use         |
+| `disk_total_gb`      | GB      | Total disk (/) space          |
+| `disk_free_gb`       | GB      | Free disk (/) space           |
 | `npu_percent`        | %       | NPU utilisation (if available)|
 | `hostname`           |         | System hostname               |
 | `hardware`           |         | Hardware / CPU model          |
