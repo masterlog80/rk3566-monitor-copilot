@@ -14,6 +14,7 @@ const history = {
   cpu:         [],
   mem:         [],
   temp:        [],
+  npu:         [],
 };
 
 // ── DOM refs ─────────────────────────────────────────────────────────────
@@ -171,6 +172,7 @@ const tempLine   = makeTempLine("tempChart");
 const histChart  = makeLine("historyChart", [
   { label: "CPU %",    color: "#58a6ff" },
   { label: "Memory %", color: "#3fb950" },
+  { label: "NPU %",    color: "#bc8cff" },
 ]);
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -184,19 +186,22 @@ function updateDonut(chart, value) {
   chart.update("none");
 }
 
-function pushHistory(ts, cpuVal, memVal) {
+function pushHistory(ts, cpuVal, memVal, npuVal) {
   const label = new Date(ts * 1000).toLocaleTimeString();
   history.labels.push(label);
   history.cpu.push(cpuVal);
   history.mem.push(memVal);
+  history.npu.push(npuVal != null ? npuVal : null);
   if (history.labels.length > HISTORY_LEN) {
     history.labels.shift();
     history.cpu.shift();
     history.mem.shift();
+    history.npu.shift();
   }
   histChart.data.labels                  = history.labels;
   histChart.data.datasets[0].data        = history.cpu;
   histChart.data.datasets[1].data        = history.mem;
+  histChart.data.datasets[2].data        = history.npu;
   histChart.update("none");
 }
 
@@ -265,7 +270,7 @@ function render(data) {
   }
 
   // History
-  pushHistory(timestamp, cpu.percent, memory.percent);
+  pushHistory(timestamp, cpu.percent, memory.percent, npu ? npu.percent : null);
 
   // Last update
   elLastUpdate.textContent = "Last update: " + new Date(timestamp * 1000).toLocaleTimeString();
