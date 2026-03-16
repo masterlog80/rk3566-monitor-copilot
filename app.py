@@ -354,9 +354,29 @@ def collect_metrics() -> dict:
 # REST API
 # ---------------------------------------------------------------------------
 
+def _get_log_file_size_kb() -> float:
+    """Return the current size of METRICS_LOG_FILE in kilobytes, or 0.0 if not found."""
+    try:
+        return round(os.path.getsize(METRICS_LOG_FILE) / 1024, 1)
+    except OSError:
+        return 0.0
+
+
 @app.route("/")
 def index():
-    return render_template("index.html", poll_interval_ms=POLL_INTERVAL_SECONDS * 1000)
+    return render_template(
+        "index.html",
+        poll_interval_ms=POLL_INTERVAL_SECONDS * 1000,
+        poll_interval_seconds=POLL_INTERVAL_SECONDS,
+        retention_days=RETENTION_DAYS,
+        resample_after_hours=RESAMPLE_AFTER_HOURS,
+        log_file_size_kb=_get_log_file_size_kb(),
+    )
+
+
+@app.route("/api/log/size")
+def api_log_size():
+    return jsonify({"size_kb": _get_log_file_size_kb()})
 
 
 @app.route("/api/metrics")

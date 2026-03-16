@@ -48,6 +48,7 @@ const elDiskUsed   = $("disk-used");
 const elDiskTotal  = $("disk-total");
 const elDiskBar    = $("disk-bar");
 const elLastUpdate = $("last-update");
+const elLogSize    = $("log-size");
 
 // ── Chart defaults ────────────────────────────────────────────────────────
 Chart.defaults.color = "#8b949e";
@@ -399,6 +400,16 @@ function startPolling() {
   return setInterval(poll, POLL_INTERVAL_MS);
 }
 
+// ── Log file size refresh ─────────────────────────────────────────────────
+async function refreshLogSize() {
+  try {
+    const resp = await fetch("/api/log/size");
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (elLogSize) elLogSize.textContent = data.size_kb + " KB";
+  } catch (_) { /* silent */ }
+}
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────
 (function init() {
   // Try WebSocket first; if socket.io is unavailable fall back to polling
@@ -407,4 +418,7 @@ function startPolling() {
   } else {
     startPolling();
   }
+  // Refresh log file size once per minute
+  refreshLogSize();
+  setInterval(refreshLogSize, 60000);
 })();
