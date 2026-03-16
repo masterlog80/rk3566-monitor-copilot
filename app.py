@@ -152,6 +152,16 @@ def collect_metrics() -> dict:
     except OSError:
         hw_model = "N/A (not Linux)"
 
+    # Fallback: /proc/device-tree/model (common on ARM SBCs like RK3566)
+    if hw_model == "Unknown":
+        try:
+            with open("/proc/device-tree/model", "r") as fh:
+                dt_model = fh.read().rstrip("\x00").strip()
+                if dt_model:
+                    hw_model = dt_model
+        except OSError:
+            pass
+
     return {
         "cpu": {
             "percent": cpu_percent,
