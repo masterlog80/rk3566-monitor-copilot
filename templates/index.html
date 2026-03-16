@@ -150,6 +150,26 @@
         </div>
       </div>
     </section>
+
+    <!-- Configuration Info Bar -->
+    <section class="config-bar">
+      <div class="config-item">
+        <span class="config-label">Poll Interval</span>
+        <span class="config-value">{{ poll_interval_seconds }} s</span>
+      </div>
+      <div class="config-item">
+        <span class="config-label">Retention</span>
+        <span class="config-value">{{ retention_days }} days</span>
+      </div>
+      <div class="config-item">
+        <span class="config-label">Resample After</span>
+        <span class="config-value">{{ resample_after_hours }} h</span>
+      </div>
+      <div class="config-item">
+        <span class="config-label">Log File Size</span>
+        <span class="config-value" id="log-size">{{ log_file_size_kb }} KB</span>
+      </div>
+    </section>
   </main>
 
   <footer class="footer">
