@@ -17,16 +17,20 @@ A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based
 - **Fully containerised** with Docker and Docker Compose
 - **Responsive** dark-themed UI – works on desktop and mobile
 
-## Quick Start
-
-### Local (Python)
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the server
-python app.py
+Instructions:
+1. Copy all the file on the same folder
+```
+git clone https://github.com/masterlog80rk3566-monitor-copilot.git
+cd rk3566-monitor-copilot
+```
+2. Build the docker image:
+```
+y | docker image prune --all
+docker build -t rk3566-monitor .
+```
+3. Deploy the composer file:
+```
+docker compose -f docker-compose.yml up -d --remove-orphans
 ```
 
 Open [http://localhost:5000](http://localhost:5000) in your browser.
