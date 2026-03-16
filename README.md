@@ -20,7 +20,7 @@ A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based
 Instructions:
 1. Copy all the file on the same folder
 ```
-git clone https://github.com/masterlog80rk3566-monitor-copilot.git
+git clone https://github.com/masterlog80/rk3566-monitor-copilot.git
 cd rk3566-monitor-copilot
 ```
 2. Build the docker image:
