@@ -18,7 +18,7 @@ let historyWindowSeconds = 60;
 
 // ── State ────────────────────────────────────────────────────────────────
 const history = {
-  labels:      [],   // ISO time strings
+  labels:      [],   // Unix timestamps (ms)
   cpu:         [],
   mem:         [],
   temp:        [],
@@ -212,6 +212,23 @@ const histChart  = new Chart($("historyChart"), {
           maxTicksLimit: 8,
           color: "#8b949e",
           font: { size: 11 },
+          callback: function(value, index) {
+            const ts = histChart.data.labels[index];
+            if (ts == null) return "";
+            const d = new Date(ts);
+            const labels = histChart.data.labels;
+            const spanMs = labels.length > 1 ? labels[labels.length - 1] - labels[0] : 0;
+            if (spanMs >= 86400000) {
+              // Show date + time for spans >= 1 day
+              const mo = String(d.getMonth() + 1).padStart(2, "0");
+              const dy = String(d.getDate()).padStart(2, "0");
+              const hh = String(d.getHours()).padStart(2, "0");
+              const mm = String(d.getMinutes()).padStart(2, "0");
+              return mo + "/" + dy + " " + hh + ":" + mm;
+            }
+            // Show time only for shorter spans
+            return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          },
         },
         grid: { color: "#21262d" },
       },
@@ -231,7 +248,27 @@ const histChart  = new Chart($("historyChart"), {
         mode: "index",
         intersect: false,
         callbacks: {
+          title: function(items) {
+            if (!items.length) return "";
+            const ts = histChart.data.labels[items[0].dataIndex];
+            if (ts == null) return "";
+            return new Date(ts).toLocaleString();
+          },
           label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y !== null ? ctx.parsed.y.toFixed(1) + " %" : "N/A"}`,
+        },
+      },
+      zoom: {
+        zoom: {
+          wheel: { enabled: true },
+          pinch: { enabled: true },
+          mode: "x",
+        },
+        pan: {
+          enabled: true,
+          mode: "x",
+        },
+        limits: {
+          x: { minRange: 10000 },
         },
       },
     },
@@ -260,7 +297,7 @@ function updateHistChart() {
 }
 
 function pushHistory(ts, cpuVal, memVal, npuVal) {
-  history.labels.push(new Date(ts * 1000).toLocaleTimeString());
+  history.labels.push(ts * 1000);
   history.cpu.push(cpuVal);
   history.mem.push(memVal);
   history.npu.push(npuVal != null ? npuVal : null);
@@ -345,14 +382,22 @@ function render(data) {
 }
 
 // ── Timeframe selector ────────────────────────────────────────────────────
-document.querySelectorAll(".btn-tf").forEach(btn => {
+document.querySelectorAll(".btn-tf[data-seconds]").forEach(btn => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".btn-tf").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".btn-tf[data-seconds]").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     historyWindowSeconds = parseInt(btn.dataset.seconds, 10);
     updateHistChart();
+    histChart.resetZoom();
   });
 });
+
+// Reset zoom on button click or double-click on chart
+const btnResetZoom = $("btn-reset-zoom");
+if (btnResetZoom) {
+  btnResetZoom.addEventListener("click", () => histChart.resetZoom());
+}
+$("historyChart").addEventListener("dblclick", () => histChart.resetZoom());
 
 // ── WebSocket connection ──────────────────────────────────────────────────
 function connectWebSocket() {
