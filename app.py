@@ -131,6 +131,7 @@ def collect_metrics() -> dict:
 
     mem = psutil.virtual_memory()
     swap = psutil.swap_memory()
+    disk = psutil.disk_usage("/")
 
     uptime_sec = _get_uptime_seconds()
     cpu_temp = _get_cpu_temp()
@@ -165,6 +166,12 @@ def collect_metrics() -> dict:
             "swap_total_mb": round(swap.total / 1024 / 1024, 1),
             "swap_used_mb": round(swap.used / 1024 / 1024, 1),
             "swap_percent": swap.percent,
+        },
+        "disk": {
+            "total_gb": round(disk.total / 1024 / 1024 / 1024, 1),
+            "used_gb": round(disk.used / 1024 / 1024 / 1024, 1),
+            "free_gb": round(disk.free / 1024 / 1024 / 1024, 1),
+            "percent": disk.percent,
         },
         "npu": {
             "percent": npu_percent,
@@ -260,6 +267,11 @@ def api_metrics_csv():
         writer.writerow(["swap_percent", data["memory"]["swap_percent"], "%"])
         writer.writerow(["swap_used_mb", data["memory"]["swap_used_mb"], "MB"])
         writer.writerow(["swap_total_mb", data["memory"]["swap_total_mb"], "MB"])
+        # Disk
+        writer.writerow(["disk_percent", data["disk"]["percent"], "%"])
+        writer.writerow(["disk_used_gb", data["disk"]["used_gb"], "GB"])
+        writer.writerow(["disk_total_gb", data["disk"]["total_gb"], "GB"])
+        writer.writerow(["disk_free_gb", data["disk"]["free_gb"], "GB"])
         # NPU
         writer.writerow(["npu_percent", data["npu"]["percent"], "%"])
         # System

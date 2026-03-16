@@ -34,6 +34,10 @@ const elSwapPct    = $("swap-percent");
 const elSwapUsed   = $("swap-used");
 const elSwapTotal  = $("swap-total");
 const elSwapBar    = $("swap-bar");
+const elDiskPct    = $("disk-percent");
+const elDiskUsed   = $("disk-used");
+const elDiskTotal  = $("disk-total");
+const elDiskBar    = $("disk-bar");
 const elLastUpdate = $("last-update");
 
 // ── Chart defaults ────────────────────────────────────────────────────────
@@ -208,7 +212,7 @@ function pushTempHistory(ts, tempVal) {
 
 // ── Render metrics ────────────────────────────────────────────────────────
 function render(data) {
-  const { cpu, memory, npu, system, timestamp } = data;
+  const { cpu, memory, disk, npu, system, timestamp } = data;
 
   // Info bar
   elHostname.textContent  = system.hostname || "–";
@@ -251,6 +255,14 @@ function render(data) {
   elSwapUsed.textContent  = memory.swap_used_mb + " MB";
   elSwapTotal.textContent = memory.swap_total_mb + " MB";
   elSwapBar.style.width   = (memory.swap_percent || 0) + "%";
+
+  // Disk
+  if (disk) {
+    elDiskPct.textContent   = pct(disk.percent);
+    elDiskUsed.textContent  = disk.used_gb + " GB";
+    elDiskTotal.textContent = disk.total_gb + " GB";
+    elDiskBar.style.width   = (disk.percent || 0) + "%";
+  }
 
   // History
   pushHistory(timestamp, cpu.percent, memory.percent);

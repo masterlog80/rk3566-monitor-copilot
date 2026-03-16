@@ -202,10 +202,11 @@ html, body {
   flex-direction: column;
 }
 
-/* ── Swap section ───────────────────────────────────────────────────── */
+/* ── Swap & Disk section ─────────────────────────────────────────────── */
 .swap-row {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
 }
 
 .progress-wrap {
