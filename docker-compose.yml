@@ -1,8 +1,8 @@
 services:
   monitor:
     build: .
-    image: rk3566-monitor
-    container_name: rk3566-monitor
+    image: rk3566-monitor-copilot
+    container_name: rk3566-monitor-copilot
     privileged: true
     networks:
       - proxy
