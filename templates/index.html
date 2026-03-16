@@ -104,7 +104,14 @@
     <section class="history">
       <div class="card wide">
         <div class="card-header">
-          <h2 class="card-title">CPU, Memory &amp; NPU History (last 60 s)</h2>
+          <h2 class="card-title">CPU, Memory &amp; NPU History</h2>
+          <div class="timeframe-btns">
+            <button class="btn-tf active" data-seconds="60">1 min</button>
+            <button class="btn-tf" data-seconds="300">5 min</button>
+            <button class="btn-tf" data-seconds="600">10 min</button>
+            <button class="btn-tf" data-seconds="1800">30 min</button>
+            <button class="btn-tf" data-seconds="3600">1 hr</button>
+          </div>
         </div>
         <div class="chart-wrap tall">
           <canvas id="historyChart"></canvas>
