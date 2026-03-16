@@ -25,13 +25,13 @@ docker compose -f docker-compose.yml up -d --remove-orphans
 
 ## Features
 
-- **Real-time metrics** via Socket.IO WebSocket (2-second refresh)
+- **Real-time metrics** via Socket.IO WebSocket (configurable refresh rate, default 10 s)
 - **REST API** fallback with polling support
 - **Charts**: donut gauges for CPU / memory / NPU, line chart for temperature history, combined history chart
 - **NPU monitoring**: real-time Neural Processing Unit utilisation via the `rknpu2` kernel driver
 - **System info**: hostname, hardware model, uptime, CPU frequency
 - **CSV export**: one-click download of a full metrics snapshot as a `.csv` file
-- **Local metrics log**: graph values (CPU%, memory%, temperature, NPU%) are automatically appended to a local CSV file every 2 seconds
+- **Local metrics log**: graph values (CPU%, memory%, temperature, NPU%) are automatically appended to a local CSV file at each poll interval, with automatic pruning and resampling
 - **Fully containerised** with Docker and Docker Compose
 - **Responsive** dark-themed UI – works on desktop and mobile
 
@@ -60,14 +60,17 @@ docker run -d \
 
 Copy `.env` and adjust as needed:
 
-| Variable          | Default                     | Description                                          |
-|-------------------|-----------------------------|------------------------------------------------------|
-| `HOST`            | `0.0.0.0`                   | Bind address                                         |
-| `PORT`            | `5000`                      | TCP port                                             |
-| `SECRET_KEY`      | `change-me-in-production`   | Flask session secret (change this)                   |
-| `FLASK_ENV`       | `production`                | Flask environment                                    |
-| `LOG_LEVEL`       | `INFO`                      | Python logging level                                 |
-| `METRICS_LOG_FILE`| `metrics_log.csv`           | Path of the local CSV file that logs graph values. When using Docker Compose this is automatically set to `/data/metrics_log.csv` (mapped to `./data/` on the host). |
+| Variable               | Default                     | Description                                          |
+|------------------------|-----------------------------|------------------------------------------------------|
+| `HOST`                 | `0.0.0.0`                   | Bind address                                         |
+| `PORT`                 | `5000`                      | TCP port                                             |
+| `SECRET_KEY`           | `change-me-in-production`   | Flask session secret (change this)                   |
+| `FLASK_ENV`            | `production`                | Flask environment                                    |
+| `LOG_LEVEL`            | `INFO`                      | Python logging level                                 |
+| `METRICS_LOG_FILE`     | `metrics_log.csv`           | Path of the local CSV file that logs graph values. When using Docker Compose this is automatically set to `/data/metrics_log.csv` (mapped to `./data/` on the host). |
+| `POLL_INTERVAL_SECONDS`| `10`                        | How often (in seconds) metrics are collected and broadcast to clients via WebSocket and logged to CSV. |
+| `RETENTION_DAYS`       | `14`                        | Number of days to retain rows in the local CSV log. Rows older than this are pruned during hourly maintenance. |
+| `RESAMPLE_AFTER_HOURS` | `24`                        | After this many hours, high-frequency CSV rows are averaged into 1-minute buckets to keep the log file compact. |
 
 ## CSV Export
 
@@ -104,7 +107,7 @@ You can also download the CSV directly via the API endpoint `GET /api/metrics/cs
 
 ## Local Metrics Log
 
-In addition to the on-demand CSV export, the monitor **automatically appends** the graph values to a local CSV file every 2 seconds while the server is running. The file records the metrics that are plotted in the dashboard charts:
+In addition to the on-demand CSV export, the monitor **automatically appends** the graph values to a local CSV file at every poll interval (default: every 10 seconds) while the server is running. The file records the metrics that are plotted in the dashboard charts:
 
 | Column            | Unit  | Description                       |
 |-------------------|-------|-----------------------------------|
@@ -117,6 +120,13 @@ In addition to the on-demand CSV export, the monitor **automatically appends** t
 
 The file path is controlled by the `METRICS_LOG_FILE` environment variable (default `metrics_log.csv`).  
 When running via Docker Compose it is automatically written to `/data/metrics_log.csv` inside the container, which is bind-mounted to `./data/metrics_log.csv` on the host so the log **persists across container restarts**.
+
+### Automatic maintenance
+
+Once per hour the server runs a maintenance pass on the CSV log:
+
+1. **Pruning** – rows with a timestamp older than `RETENTION_DAYS` (default: 14 days) are deleted.
+2. **Resampling** – rows older than `RESAMPLE_AFTER_HOURS` (default: 24 hours) are averaged into 1-minute buckets. This keeps the file compact while preserving a long-term trend record. Data within the last 24 hours is always kept at full poll-interval resolution.
 
 Example log snippet:
 
@@ -144,7 +154,7 @@ WebSocket events (Socket.IO):
 | Event             | Direction       | Description                      |
 |-------------------|-----------------|----------------------------------|
 | `connect`         | server → client | Confirms connection               |
-| `metrics`         | server → client | Metrics payload (every ~2 s)      |
+| `metrics`         | server → client | Metrics payload (every `POLL_INTERVAL_SECONDS`) |
 | `request_metrics` | client → server | Request an immediate snapshot     |
 | `error`           | server → client | Error notification                |
 
