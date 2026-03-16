@@ -276,6 +276,26 @@ html, body {
   background: rgba(88, 166, 255, .2);
 }
 
+.btn-prom {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .25rem .75rem;
+  border-radius: 6px;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--orange);
+  background: rgba(240, 136, 62, .1);
+  border: 1px solid var(--orange);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+
+.btn-prom:hover {
+  background: rgba(240, 136, 62, .2);
+}
+
 /* ── Config Bar ─────────────────────────────────────────────────────── */
 .config-bar {
   display: flex;

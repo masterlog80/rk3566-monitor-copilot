@@ -8,6 +8,7 @@ import psutil
 from flask import Flask, jsonify, render_template, Response
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
+from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
 
 load_dotenv()
 
@@ -27,6 +28,43 @@ METRICS_LOG_FILE = os.getenv("METRICS_LOG_FILE", "metrics_log.csv")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", 10))
 RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", 14))
 RESAMPLE_AFTER_HOURS = int(os.getenv("RESAMPLE_AFTER_HOURS", 24))
+
+
+# ---------------------------------------------------------------------------
+# Prometheus metrics
+# ---------------------------------------------------------------------------
+
+_prom_cpu_percent    = Gauge("rk3566_cpu_usage_percent",        "CPU usage percentage")
+_prom_cpu_temp       = Gauge("rk3566_cpu_temperature_celsius",  "CPU temperature in Celsius")
+_prom_cpu_freq_mhz   = Gauge("rk3566_cpu_frequency_mhz",        "Current CPU frequency in MHz")
+_prom_mem_percent    = Gauge("rk3566_memory_usage_percent",     "Memory usage percentage")
+_prom_mem_used_mb    = Gauge("rk3566_memory_used_mb",           "Memory used in MB")
+_prom_mem_total_mb   = Gauge("rk3566_memory_total_mb",          "Total memory in MB")
+_prom_swap_percent   = Gauge("rk3566_swap_usage_percent",       "Swap usage percentage")
+_prom_disk_percent   = Gauge("rk3566_disk_usage_percent",       "Disk usage percentage (root filesystem)")
+_prom_disk_used_gb   = Gauge("rk3566_disk_used_gb",             "Disk space used in GB")
+_prom_disk_total_gb  = Gauge("rk3566_disk_total_gb",            "Total disk space in GB")
+_prom_npu_percent    = Gauge("rk3566_npu_usage_percent",        "NPU usage percentage")
+_prom_uptime_seconds = Gauge("rk3566_uptime_seconds",           "System uptime in seconds")
+
+
+def _update_prometheus_gauges(data: dict) -> None:
+    """Update all Prometheus gauges from the latest collected metrics dict."""
+    _prom_cpu_percent.set(data["cpu"]["percent"])
+    if data["cpu"]["temperature_c"] is not None:
+        _prom_cpu_temp.set(data["cpu"]["temperature_c"])
+    if data["cpu"]["freq_mhz"] is not None:
+        _prom_cpu_freq_mhz.set(data["cpu"]["freq_mhz"])
+    _prom_mem_percent.set(data["memory"]["percent"])
+    _prom_mem_used_mb.set(data["memory"]["used_mb"])
+    _prom_mem_total_mb.set(data["memory"]["total_mb"])
+    _prom_swap_percent.set(data["memory"]["swap_percent"])
+    _prom_disk_percent.set(data["disk"]["percent"])
+    _prom_disk_used_gb.set(data["disk"]["used_gb"])
+    _prom_disk_total_gb.set(data["disk"]["total_gb"])
+    if data["npu"]["percent"] is not None:
+        _prom_npu_percent.set(data["npu"]["percent"])
+    _prom_uptime_seconds.set(data["system"]["uptime_seconds"])
 
 
 # ---------------------------------------------------------------------------
@@ -480,6 +518,23 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/metrics")
+def prometheus_metrics():
+    """Prometheus-compatible metrics endpoint.
+
+    Exposes all system metrics in the Prometheus text exposition format so
+    that a Prometheus server (or any OpenMetrics-compatible scraper) can
+    scrape this endpoint directly.  Point your ``prometheus.yml`` at::
+
+        scrape_configs:
+          - job_name: rk3566_monitor
+            static_configs:
+              - targets: ['<host>:5000']
+            metrics_path: /metrics
+    """
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+
+
 # ---------------------------------------------------------------------------
 # WebSocket
 # ---------------------------------------------------------------------------
@@ -520,6 +575,7 @@ def _metrics_broadcast_task():
             data = collect_metrics()
             socketio.emit("metrics", data)
             _append_metrics_to_csv(data)
+            _update_prometheus_gauges(data)
             now = int(time.time())
             if now - last_maintenance >= _MAINTENANCE_INTERVAL_SECONDS:
                 _maintain_csv_log()
