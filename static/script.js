@@ -445,6 +445,45 @@ function startPolling() {
   return setInterval(poll, POLL_INTERVAL_MS);
 }
 
+// ── History preload (populate charts from existing CSV log on page open) ──
+async function loadHistory() {
+  try {
+    const resp = await fetch("/api/history");
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const rows = data.history;
+    if (!Array.isArray(rows) || rows.length === 0) return;
+
+    rows.forEach(row => {
+      history.labels.push(row.timestamp * 1000);
+      history.cpu.push(row.cpu_percent);
+      history.mem.push(row.memory_percent);
+      history.npu.push(row.npu_percent);
+      if (row.temperature_c != null) {
+        tempLine.data.labels.push(new Date(row.timestamp * 1000).toLocaleTimeString());
+        tempLine.data.datasets[0].data.push(row.temperature_c);
+      }
+    });
+
+    // Trim to max allowed length
+    while (history.labels.length > MAX_HISTORY_LEN) {
+      history.labels.shift();
+      history.cpu.shift();
+      history.mem.shift();
+      history.npu.shift();
+    }
+    while (tempLine.data.labels.length > MAX_HISTORY_LEN) {
+      tempLine.data.labels.shift();
+      tempLine.data.datasets[0].data.shift();
+    }
+
+    updateHistChart();
+    tempLine.update("none");
+  } catch (err) {
+    console.warn("Failed to load history:", err);
+  }
+}
+
 // ── Log file size refresh ─────────────────────────────────────────────────
 async function refreshLogSize() {
   try {
@@ -457,6 +496,8 @@ async function refreshLogSize() {
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────
 (function init() {
+  // Pre-populate charts from the existing CSV log before live data arrives
+  loadHistory();
   // Try WebSocket first; if socket.io is unavailable fall back to polling
   if (typeof io !== "undefined") {
     connectWebSocket();

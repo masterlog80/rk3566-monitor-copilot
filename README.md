@@ -145,6 +145,7 @@ timestamp,datetime,cpu_percent,memory_percent,temperature_c,npu_percent
 | GET    | `/metrics`          | Prometheus metrics (text exposition format)  |
 | GET    | `/api/metrics`      | All metrics (JSON)                           |
 | GET    | `/api/metrics/csv`  | All metrics as a downloadable CSV file       |
+| GET    | `/api/history`      | Historical graph metrics from the CSV log (JSON) |
 | GET    | `/api/cpu`          | CPU metrics only                             |
 | GET    | `/api/memory`       | Memory metrics only                          |
 | GET    | `/api/npu`          | NPU metrics only                             |
