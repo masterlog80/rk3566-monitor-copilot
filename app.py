@@ -417,6 +417,50 @@ def api_log_size():
     return jsonify({"size_kb": _get_log_file_size_kb()})
 
 
+@app.route("/api/history")
+def api_history():
+    """Return all in-retention metrics from the local CSV log as JSON.
+
+    Each element in the ``history`` list contains the fields stored in the
+    CSV (timestamp, cpu_percent, memory_percent, temperature_c, npu_percent).
+    Entries outside the configured RETENTION_DAYS window are excluded so the
+    client only receives data it would normally be allowed to display.
+    """
+
+    def _float_or_none(val):
+        if val in ("", "None", None):
+            return None
+        try:
+            return float(val)
+        except ValueError:
+            return None
+
+    result = []
+    if not os.path.exists(METRICS_LOG_FILE):
+        return jsonify({"history": result})
+    try:
+        cutoff = int(time.time()) - RETENTION_DAYS * 86400
+        with open(METRICS_LOG_FILE, "r", newline="") as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                try:
+                    ts = int(row["timestamp"])
+                except (ValueError, KeyError):
+                    continue
+                if ts < cutoff:
+                    continue
+                result.append({
+                    "timestamp": ts,
+                    "cpu_percent": _float_or_none(row.get("cpu_percent")),
+                    "memory_percent": _float_or_none(row.get("memory_percent")),
+                    "temperature_c": _float_or_none(row.get("temperature_c")),
+                    "npu_percent": _float_or_none(row.get("npu_percent")),
+                })
+    except OSError:
+        logger.exception("Failed to read history from CSV log '%s'", METRICS_LOG_FILE)
+    return jsonify({"history": result})
+
+
 @app.route("/api/metrics")
 def api_metrics():
     try:
