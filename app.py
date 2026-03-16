@@ -24,6 +24,9 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", 5000))
 METRICS_LOG_FILE = os.getenv("METRICS_LOG_FILE", "metrics_log.csv")
+POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", 10))
+RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", 14))
+RESAMPLE_AFTER_HOURS = int(os.getenv("RESAMPLE_AFTER_HOURS", 24))
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +169,113 @@ def _append_metrics_to_csv(data: dict) -> None:
         logger.exception("Failed to write metrics to CSV log '%s'", file_path)
 
 
+def _maintain_csv_log() -> None:
+    """Prune entries older than RETENTION_DAYS and resample entries older than
+    RESAMPLE_AFTER_HOURS to 1-minute resolution in the local CSV log.
+
+    This keeps the log file size manageable:
+    - Data within the last RESAMPLE_AFTER_HOURS is kept at full resolution.
+    - Older data is averaged into 1-minute buckets.
+    - Data beyond RETENTION_DAYS is removed entirely.
+    """
+    file_path = METRICS_LOG_FILE
+    if not os.path.exists(file_path):
+        return
+    try:
+        now = int(time.time())
+        cutoff_prune = now - RETENTION_DAYS * 86400
+        cutoff_resample = now - RESAMPLE_AFTER_HOURS * 3600
+
+        rows = []
+        with open(file_path, "r", newline="") as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                try:
+                    ts = int(row["timestamp"])
+                except (ValueError, KeyError):
+                    continue
+                if ts < cutoff_prune:
+                    continue  # prune beyond retention window
+                rows.append(row)
+
+        if not rows:
+            return
+
+        old_rows = [r for r in rows if int(r["timestamp"]) < cutoff_resample]
+        recent_rows = [r for r in rows if int(r["timestamp"]) >= cutoff_resample]
+
+        # Resample old rows into 1-minute buckets by averaging numeric columns
+        buckets: dict[int, dict] = {}
+        for row in old_rows:
+            ts = int(row["timestamp"])
+            bucket = (ts // 60) * 60  # truncate to the start of the minute
+            if bucket not in buckets:
+                buckets[bucket] = {
+                    "count": 0,
+                    "cpu": 0.0,
+                    "mem": 0.0,
+                    "temp_sum": 0.0,
+                    "temp_count": 0,
+                    "npu_sum": 0.0,
+                    "npu_count": 0,
+                }
+            b = buckets[bucket]
+            b["count"] += 1
+            b["cpu"] += float(row.get("cpu_percent") or 0)
+            b["mem"] += float(row.get("memory_percent") or 0)
+            temp_raw = row.get("temperature_c", "")
+            if temp_raw not in ("", "None", None):
+                b["temp_sum"] += float(temp_raw)
+                b["temp_count"] += 1
+            npu_raw = row.get("npu_percent", "")
+            if npu_raw not in ("", "None", None):
+                b["npu_sum"] += float(npu_raw)
+                b["npu_count"] += 1
+
+        resampled_rows = []
+        for bucket_ts in sorted(buckets.keys()):
+            b = buckets[bucket_ts]
+            cnt = b["count"]
+            resampled_rows.append({
+                "timestamp": bucket_ts,
+                "datetime": time.strftime(
+                    "%Y-%m-%d %H:%M:%S", time.localtime(bucket_ts)
+                ),
+                "cpu_percent": round(b["cpu"] / cnt, 2),
+                "memory_percent": round(b["mem"] / cnt, 2),
+                "temperature_c": (
+                    round(b["temp_sum"] / b["temp_count"], 2)
+                    if b["temp_count"]
+                    else ""
+                ),
+                "npu_percent": (
+                    round(b["npu_sum"] / b["npu_count"], 2)
+                    if b["npu_count"]
+                    else ""
+                ),
+            })
+
+        all_rows = resampled_rows + list(recent_rows)
+
+        tmp_path = file_path + ".tmp"
+        with open(tmp_path, "w", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=_CSV_HEADER)
+            writer.writeheader()
+            writer.writerows(all_rows)
+        os.replace(tmp_path, file_path)
+
+        logger.info(
+            "CSV maintenance: %d resampled (>%dh) + %d recent rows; "
+            "pruned data older than %d days",
+            len(resampled_rows),
+            RESAMPLE_AFTER_HOURS,
+            len(recent_rows),
+            RETENTION_DAYS,
+        )
+    except OSError:
+        logger.exception("Failed to maintain CSV log '%s'", file_path)
+
+
 def collect_metrics() -> dict:
     """Collect and return all system metrics as a dict."""
     cpu_percent = psutil.cpu_percent(interval=0.2)
@@ -246,7 +356,7 @@ def collect_metrics() -> dict:
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", poll_interval_ms=POLL_INTERVAL_SECONDS * 1000)
 
 
 @app.route("/api/metrics")
@@ -376,18 +486,27 @@ def ws_request_metrics():
 
 
 # ---------------------------------------------------------------------------
-# Background task: push metrics every 2 seconds to all connected clients
+# Background task: push metrics every POLL_INTERVAL_SECONDS to all clients
 # ---------------------------------------------------------------------------
 
+_MAINTENANCE_INTERVAL_SECONDS = 3600  # run CSV maintenance once per hour
+
+
 def _metrics_broadcast_task():
+    _maintain_csv_log()  # run once at startup
+    last_maintenance = int(time.time())
     while True:
         try:
             data = collect_metrics()
             socketio.emit("metrics", data)
             _append_metrics_to_csv(data)
+            now = int(time.time())
+            if now - last_maintenance >= _MAINTENANCE_INTERVAL_SECONDS:
+                _maintain_csv_log()
+                last_maintenance = now
         except Exception:  # noqa: BLE001
             logger.exception("Background metrics broadcast error")
-        socketio.sleep(2)
+        socketio.sleep(POLL_INTERVAL_SECONDS)
 
 
 if __name__ == "__main__":

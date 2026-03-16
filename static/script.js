@@ -5,7 +5,11 @@
 "use strict";
 
 // ── Config ──────────────────────────────────────────────────────────────
-const POLL_INTERVAL_MS = 2000;          // fallback REST polling interval
+// Poll interval is injected by the server via window.SERVER_CONFIG so that
+// the client stays in sync with the backend's POLL_INTERVAL_SECONDS setting.
+const POLL_INTERVAL_MS = (window.SERVER_CONFIG && window.SERVER_CONFIG.pollIntervalMs)
+  ? window.SERVER_CONFIG.pollIntervalMs
+  : 10000;                                // fallback: 10 s
 const MAX_HISTORY_SECONDS = 3600;       // retain up to 1 hour of data
 const MAX_HISTORY_LEN = Math.ceil(MAX_HISTORY_SECONDS * 1000 / POLL_INTERVAL_MS);
 
@@ -271,7 +275,7 @@ function pushHistory(ts, cpuVal, memVal, npuVal) {
 function pushTempHistory(ts, tempVal) {
   tempLine.data.labels.push(new Date(ts * 1000).toLocaleTimeString());
   tempLine.data.datasets[0].data.push(tempVal);
-  if (tempLine.data.labels.length > 60) {
+  if (tempLine.data.labels.length > MAX_HISTORY_LEN) {
     tempLine.data.labels.shift();
     tempLine.data.datasets[0].data.shift();
   }
