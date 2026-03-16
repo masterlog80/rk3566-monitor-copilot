@@ -168,6 +168,17 @@ function makeTempLine(id) {
             label: ctx => ` ${ctx.parsed.y.toFixed(1)} °C`,
           },
         },
+        zoom: {
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: "x",
+          },
+          pan: {
+            enabled: true,
+            mode: "x",
+          },
+        },
       },
     },
   });
@@ -398,6 +409,9 @@ if (btnResetZoom) {
   btnResetZoom.addEventListener("click", () => histChart.resetZoom());
 }
 $("historyChart").addEventListener("dblclick", () => histChart.resetZoom());
+
+// Reset temperature chart zoom on double-click
+$("tempChart").addEventListener("dblclick", () => tempLine.resetZoom());
 
 // ── WebSocket connection ──────────────────────────────────────────────────
 function connectWebSocket() {
