@@ -184,6 +184,7 @@ html, body {
 
 .chart-wrap.tall {
   height: 220px;
+  cursor: zoom-in;
 }
 
 /* ── Sub-stats (used / total) ───────────────────────────────────────── */
