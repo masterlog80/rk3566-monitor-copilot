@@ -10,6 +10,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application source
 COPY . .
 
+RUN mkdir -p /data
+
 EXPOSE 5000
 
 ENV HOST=0.0.0.0
