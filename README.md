@@ -11,7 +11,7 @@ cd rk3566-monitor-copilot
 2. Build the docker image:
 ```
 yes | docker image prune --all
-docker build -t rk3566-monitor .
+docker build -t rk3566-monitor-copilot .
 ```
 3. Deploy the composer file:
 ```
