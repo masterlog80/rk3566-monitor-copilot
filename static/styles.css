@@ -255,6 +255,11 @@ html, body {
   color: var(--accent);
 }
 
+.btn-reset-zoom {
+  margin-left: .5rem;
+  border-style: dashed;
+}
+
 /* ── CSV Export button ───────────────────────────────────────────────── */
 .btn-csv {
   display: inline-flex;
