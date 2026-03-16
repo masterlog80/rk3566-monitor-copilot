@@ -32,6 +32,7 @@ docker compose -f docker-compose.yml up -d --remove-orphans
 - **System info**: hostname, hardware model, uptime, CPU frequency
 - **CSV export**: one-click download of a full metrics snapshot as a `.csv` file
 - **Local metrics log**: graph values (CPU%, memory%, temperature, NPU%) are automatically appended to a local CSV file at each poll interval, with automatic pruning and resampling
+- **Prometheus metrics**: a `/metrics` endpoint exposes all system metrics in Prometheus text format for scraping by Prometheus, Grafana, or any OpenMetrics-compatible tool
 - **Fully containerised** with Docker and Docker Compose
 - **Responsive** dark-themed UI – works on desktop and mobile
 
@@ -141,6 +142,7 @@ timestamp,datetime,cpu_percent,memory_percent,temperature_c,npu_percent
 | Method | Path                | Description                                  |
 |--------|---------------------|----------------------------------------------|
 | GET    | `/`                 | Dashboard UI                                 |
+| GET    | `/metrics`          | Prometheus metrics (text exposition format)  |
 | GET    | `/api/metrics`      | All metrics (JSON)                           |
 | GET    | `/api/metrics/csv`  | All metrics as a downloadable CSV file       |
 | GET    | `/api/cpu`          | CPU metrics only                             |
@@ -148,6 +150,38 @@ timestamp,datetime,cpu_percent,memory_percent,temperature_c,npu_percent
 | GET    | `/api/npu`          | NPU metrics only                             |
 | GET    | `/api/system`       | System info only                             |
 | GET    | `/health`           | Health check (`{"status":"ok"}`)             |
+
+## Prometheus Integration
+
+The `/metrics` endpoint exposes all system metrics in the [Prometheus text exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/).  
+You can open it directly from the dashboard using the **📊 Prometheus** button in the top bar.
+
+### Exposed metrics
+
+| Metric name                        | Type  | Description                              |
+|------------------------------------|-------|------------------------------------------|
+| `rk3566_cpu_usage_percent`         | Gauge | CPU usage (%)                            |
+| `rk3566_cpu_temperature_celsius`   | Gauge | CPU temperature (°C)                     |
+| `rk3566_cpu_frequency_mhz`         | Gauge | Current CPU frequency (MHz)              |
+| `rk3566_memory_usage_percent`      | Gauge | Memory usage (%)                         |
+| `rk3566_memory_used_mb`            | Gauge | Memory used (MB)                         |
+| `rk3566_memory_total_mb`           | Gauge | Total memory (MB)                        |
+| `rk3566_swap_usage_percent`        | Gauge | Swap usage (%)                           |
+| `rk3566_disk_usage_percent`        | Gauge | Disk usage – root filesystem (%)         |
+| `rk3566_disk_used_gb`              | Gauge | Disk space used (GB)                     |
+| `rk3566_disk_total_gb`             | Gauge | Total disk space (GB)                    |
+| `rk3566_npu_usage_percent`         | Gauge | NPU usage (%) – only set when available  |
+| `rk3566_uptime_seconds`            | Gauge | System uptime (seconds)                  |
+
+### Example `prometheus.yml` scrape config
+
+```yaml
+scrape_configs:
+  - job_name: rk3566_monitor
+    static_configs:
+      - targets: ['<host>:5000']
+    metrics_path: /metrics
+```
 
 WebSocket events (Socket.IO):
 
