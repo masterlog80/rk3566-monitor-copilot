@@ -224,6 +224,37 @@ html, body {
   transition: width .5s ease;
 }
 
+/* ── Timeframe selector ─────────────────────────────────────────────── */
+.timeframe-btns {
+  display: flex;
+  gap: .35rem;
+  flex-wrap: wrap;
+}
+
+.btn-tf {
+  padding: .2rem .6rem;
+  border-radius: 6px;
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background .2s, color .2s, border-color .2s;
+}
+
+.btn-tf:hover {
+  background: rgba(88, 166, 255, .1);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-tf.active {
+  background: rgba(88, 166, 255, .15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* ── CSV Export button ───────────────────────────────────────────────── */
 .btn-csv {
   display: inline-flex;

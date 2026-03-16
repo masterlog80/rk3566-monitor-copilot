@@ -5,8 +5,12 @@
 "use strict";
 
 // ── Config ──────────────────────────────────────────────────────────────
-const HISTORY_LEN = 60;          // seconds of rolling history
-const POLL_INTERVAL_MS = 2000;   // fallback REST polling interval
+const POLL_INTERVAL_MS = 2000;          // fallback REST polling interval
+const MAX_HISTORY_SECONDS = 3600;       // retain up to 1 hour of data
+const MAX_HISTORY_LEN = Math.ceil(MAX_HISTORY_SECONDS * 1000 / POLL_INTERVAL_MS);
+
+// ── History window (seconds shown in chart) ───────────────────────────
+let historyWindowSeconds = 60;
 
 // ── State ────────────────────────────────────────────────────────────────
 const history = {
@@ -169,11 +173,65 @@ const cpuDonut   = makeDonut("cpuChart",  "CPU",  "#58a6ff");
 const memDonut   = makeDonut("memChart",  "Mem",  "#3fb950");
 const npuDonut   = makeDonut("npuChart",  "NPU",  "#bc8cff");
 const tempLine   = makeTempLine("tempChart");
-const histChart  = makeLine("historyChart", [
-  { label: "CPU %",    color: "#58a6ff" },
-  { label: "Memory %", color: "#3fb950" },
-  { label: "NPU %",    color: "#bc8cff" },
-]);
+const histChart  = new Chart($("historyChart"), {
+  type: "line",
+  data: {
+    labels: [],
+    datasets: [
+      { label: "CPU %",    borderColor: "#58a6ff", backgroundColor: "#58a6ff22" },
+      { label: "Memory %", borderColor: "#3fb950", backgroundColor: "#3fb95022" },
+      { label: "NPU %",    borderColor: "#bc8cff", backgroundColor: "#bc8cff22" },
+    ].map(d => Object.assign(d, {
+      data: [],
+      borderWidth: 2,
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      fill: true,
+      tension: 0.3,
+    })),
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    interaction: {
+      mode: "index",
+      intersect: false,
+    },
+    scales: {
+      x: {
+        display: true,
+        ticks: {
+          maxRotation: 0,
+          autoSkip: true,
+          maxTicksLimit: 8,
+          color: "#8b949e",
+          font: { size: 11 },
+        },
+        grid: { color: "#21262d" },
+      },
+      y: {
+        min: 0,
+        max: 100,
+        ticks: { callback: v => v + "%" },
+        grid: { color: "#21262d" },
+      },
+    },
+    plugins: {
+      legend: {
+        position: "top",
+        labels: { boxWidth: 12, padding: 10 },
+      },
+      tooltip: {
+        mode: "index",
+        intersect: false,
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y !== null ? ctx.parsed.y.toFixed(1) + " %" : "N/A"}`,
+        },
+      },
+    },
+  },
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function pct(val) {
@@ -186,29 +244,34 @@ function updateDonut(chart, value) {
   chart.update("none");
 }
 
+function updateHistChart() {
+  const maxPoints = Math.ceil(historyWindowSeconds * 1000 / POLL_INTERVAL_MS);
+  const start = Math.max(0, history.labels.length - maxPoints);
+  histChart.data.labels            = history.labels.slice(start);
+  histChart.data.datasets[0].data  = history.cpu.slice(start);
+  histChart.data.datasets[1].data  = history.mem.slice(start);
+  histChart.data.datasets[2].data  = history.npu.slice(start);
+  histChart.update("none");
+}
+
 function pushHistory(ts, cpuVal, memVal, npuVal) {
-  const label = new Date(ts * 1000).toLocaleTimeString();
-  history.labels.push(label);
+  history.labels.push(new Date(ts * 1000).toLocaleTimeString());
   history.cpu.push(cpuVal);
   history.mem.push(memVal);
   history.npu.push(npuVal != null ? npuVal : null);
-  if (history.labels.length > HISTORY_LEN) {
+  if (history.labels.length > MAX_HISTORY_LEN) {
     history.labels.shift();
     history.cpu.shift();
     history.mem.shift();
     history.npu.shift();
   }
-  histChart.data.labels                  = history.labels;
-  histChart.data.datasets[0].data        = history.cpu;
-  histChart.data.datasets[1].data        = history.mem;
-  histChart.data.datasets[2].data        = history.npu;
-  histChart.update("none");
+  updateHistChart();
 }
 
 function pushTempHistory(ts, tempVal) {
   tempLine.data.labels.push(new Date(ts * 1000).toLocaleTimeString());
   tempLine.data.datasets[0].data.push(tempVal);
-  if (tempLine.data.labels.length > HISTORY_LEN) {
+  if (tempLine.data.labels.length > 60) {
     tempLine.data.labels.shift();
     tempLine.data.datasets[0].data.shift();
   }
@@ -275,6 +338,16 @@ function render(data) {
   // Last update
   elLastUpdate.textContent = "Last update: " + new Date(timestamp * 1000).toLocaleTimeString();
 }
+
+// ── Timeframe selector ────────────────────────────────────────────────────
+document.querySelectorAll(".btn-tf").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".btn-tf").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    historyWindowSeconds = parseInt(btn.dataset.seconds, 10);
+    updateHistChart();
+  });
+});
 
 // ── WebSocket connection ──────────────────────────────────────────────────
 function connectWebSocket() {
