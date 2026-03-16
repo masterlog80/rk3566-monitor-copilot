@@ -2,22 +2,7 @@
 
 A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based single-board computers. Displays CPU usage, memory, temperature, NPU usage, and uptime with live Chart.js visualizations served over WebSockets.
 
-## Screenshot
-
-![RK3566 System Monitor Dashboard](https://github.com/user-attachments/assets/e59bd797-58d9-41d8-85f1-8b613252e1e9)
-
-## Features
-
-- **Real-time metrics** via Socket.IO WebSocket (2-second refresh)
-- **REST API** fallback with polling support
-- **Charts**: donut gauges for CPU / memory / NPU, line chart for temperature history, combined history chart
-- **NPU monitoring**: real-time Neural Processing Unit utilisation via the `rknpu2` kernel driver
-- **System info**: hostname, hardware model, uptime, CPU frequency
-- **CSV export**: one-click download of a full metrics snapshot as a `.csv` file
-- **Fully containerised** with Docker and Docker Compose
-- **Responsive** dark-themed UI – works on desktop and mobile
-
-Instructions:
+## Instructions:
 1. Copy all the file on the same folder
 ```
 git clone https://github.com/masterlog80/rk3566-monitor-copilot.git
@@ -32,8 +17,22 @@ docker build -t rk3566-monitor .
 ```
 docker compose -f docker-compose.yml up -d --remove-orphans
 ```
+4. Open [http://localhost:5000](http://localhost:5000) in your browser.
 
-Open [http://localhost:5000](http://localhost:5000) in your browser.
+## Screenshot
+
+![RK3566 System Monitor Dashboard](https://github.com/user-attachments/assets/e59bd797-58d9-41d8-85f1-8b613252e1e9)
+
+## Features
+
+- **Real-time metrics** via Socket.IO WebSocket (2-second refresh)
+- **REST API** fallback with polling support
+- **Charts**: donut gauges for CPU / memory / NPU, line chart for temperature history, combined history chart
+- **NPU monitoring**: real-time Neural Processing Unit utilisation via the `rknpu2` kernel driver
+- **System info**: hostname, hardware model, uptime, CPU frequency
+- **CSV export**: one-click download of a full metrics snapshot as a `.csv` file
+- **Fully containerised** with Docker and Docker Compose
+- **Responsive** dark-themed UI – works on desktop and mobile
 
 ### Docker Compose
 
