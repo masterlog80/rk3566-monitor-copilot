@@ -193,6 +193,7 @@ const histChart  = new Chart($("historyChart"), {
       pointHoverRadius: 4,
       fill: true,
       tension: 0.3,
+      spanGaps: false,
     })),
   },
   options: {
@@ -280,6 +281,20 @@ function pct(val) {
   return val != null ? val.toFixed(1) + " %" : "N/A";
 }
 
+// Insert a null data point just after `lastTs` so Chart.js draws a visible
+// break in the line instead of connecting across the missing period.
+// The gap marker timestamp is lastTs + 1 ms – placing it immediately after
+// the last real sample keeps it invisible on the x-axis while still signalling
+// the absence of data to Chart.js (which treats null as "no value here").
+function maybeInsertGap(lastTs, currentTs) {
+  if (currentTs - lastTs > 2 * POLL_INTERVAL_MS) {
+    history.labels.push(lastTs + 1);
+    history.cpu.push(null);
+    history.mem.push(null);
+    history.npu.push(null);
+  }
+}
+
 function updateDonut(chart, value) {
   const v = value != null ? value : 0;
   chart.data.datasets[0].data = [v, 100 - v];
@@ -297,7 +312,18 @@ function updateHistChart() {
 }
 
 function pushHistory(ts, cpuVal, memVal, npuVal) {
-  history.labels.push(ts * 1000);
+  const tsMs = ts * 1000;
+  if (history.labels.length > 0) {
+    const lastTs = history.labels[history.labels.length - 1];
+    maybeInsertGap(lastTs, tsMs);
+    if (history.labels.length > MAX_HISTORY_LEN) {
+      history.labels.shift();
+      history.cpu.shift();
+      history.mem.shift();
+      history.npu.shift();
+    }
+  }
+  history.labels.push(tsMs);
   history.cpu.push(cpuVal);
   history.mem.push(memVal);
   history.npu.push(npuVal != null ? npuVal : null);
@@ -451,12 +477,16 @@ async function loadHistory() {
     if (!Array.isArray(rows) || rows.length === 0) return;
 
     rows.forEach(row => {
-      history.labels.push(row.timestamp * 1000);
+      const tsMs = row.timestamp * 1000;
+      if (history.labels.length > 0) {
+        maybeInsertGap(history.labels[history.labels.length - 1], tsMs);
+      }
+      history.labels.push(tsMs);
       history.cpu.push(row.cpu_percent);
       history.mem.push(row.memory_percent);
       history.npu.push(row.npu_percent);
       if (row.temperature_c != null) {
-        tempLine.data.labels.push(new Date(row.timestamp * 1000).toLocaleTimeString());
+        tempLine.data.labels.push(new Date(tsMs).toLocaleTimeString());
         tempLine.data.datasets[0].data.push(row.temperature_c);
       }
     });
