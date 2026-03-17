@@ -392,11 +392,7 @@ document.querySelectorAll(".btn-tf[data-seconds]").forEach(btn => {
   });
 });
 
-// Reset zoom on button click or double-click on chart
-const btnResetZoom = $("btn-reset-zoom");
-if (btnResetZoom) {
-  btnResetZoom.addEventListener("click", () => histChart.resetZoom());
-}
+// Reset zoom on double-click on chart
 $("historyChart").addEventListener("dblclick", () => histChart.resetZoom());
 
 // ── WebSocket connection ──────────────────────────────────────────────────
