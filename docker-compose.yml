@@ -17,7 +17,7 @@ services:
     volumes:
       - /proc:/proc:ro
       - /sys:/sys:ro
-      - ./data:/data
+      - /mnt/DOCKER/volumes/rk3566-monitor-copilot/data:/data
     restart: unless-stopped
 
 ############
