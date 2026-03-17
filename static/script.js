@@ -205,7 +205,6 @@ const histChart  = new Chart($("historyChart"), {
     },
     scales: {
       x: {
-        type: "linear",
         display: true,
         ticks: {
           maxRotation: 0,
@@ -214,7 +213,7 @@ const histChart  = new Chart($("historyChart"), {
           color: "#8b949e",
           font: { size: 11 },
           callback: function(value, index) {
-            const ts = value;
+            const ts = histChart.data.labels[index];
             if (ts == null) return "";
             const d = new Date(ts);
             const labels = histChart.data.labels;
