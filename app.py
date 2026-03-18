@@ -28,6 +28,7 @@ METRICS_LOG_FILE = os.getenv("METRICS_LOG_FILE", "metrics_log.csv")
 POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", 10))
 RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", 14))
 RESAMPLE_AFTER_HOURS = int(os.getenv("RESAMPLE_AFTER_HOURS", 24))
+NPU_LOAD_PATH = os.getenv("NPU_LOAD_PATH", "/sys/kernel/debug/rknpu/load")
 
 
 # ---------------------------------------------------------------------------
@@ -116,9 +117,9 @@ def _get_npu_usage() -> float | None:
     Tries the kernel debug interface first, then the devfreq load sysfs node.
     Returns a float in [0, 100] or None if the value cannot be read.
     """
-    # Path exposed by the rknpu2 kernel driver (most RK356x / RK3588 boards)
-    debug_path = "/sys/kernel/debug/rknpu/load"
-    raw = _read_proc_file(debug_path)
+    # Path exposed by the rknpu2 kernel driver (most RK356x / RK3588 boards).
+    # Overridable via the NPU_LOAD_PATH environment variable.
+    raw = _read_proc_file(NPU_LOAD_PATH)
     if raw:
         # Handles both formats:
         #   Simple:     "NPU load:  0%"

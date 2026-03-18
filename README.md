@@ -72,6 +72,7 @@ Copy `.env` and adjust as needed:
 | `POLL_INTERVAL_SECONDS`| `10`                        | How often (in seconds) metrics are collected and broadcast to clients via WebSocket and logged to CSV. |
 | `RETENTION_DAYS`       | `14`                        | Number of days to retain rows in the local CSV log. Rows older than this are pruned during hourly maintenance. |
 | `RESAMPLE_AFTER_HOURS` | `24`                        | After this many hours, high-frequency CSV rows are averaged into 1-minute buckets to keep the log file compact. |
+| `NPU_LOAD_PATH`        | `/sys/kernel/debug/rknpu/load` | Path to the sysfs/debugfs file used to read NPU load. Override when your board exposes NPU utilisation at a different path (e.g. `/sys/class/devfreq/fde40000.npu/device/load`). |
 
 ## CSV Export
 
