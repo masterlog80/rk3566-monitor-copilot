@@ -135,7 +135,7 @@ html, body {
 /* ── Cards grid ─────────────────────────────────────────────────────── */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1rem;
 }
 
@@ -342,6 +342,10 @@ html, body {
 }
 
 /* ── Responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 @media (max-width: 640px) {
   .topbar-info { font-size: .75rem; }
   .metric-value { font-size: 1.3rem; }
