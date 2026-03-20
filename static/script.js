@@ -48,6 +48,12 @@ const elDiskPct    = $("disk-percent");
 const elDiskUsed   = $("disk-used");
 const elDiskTotal  = $("disk-total");
 const elDiskBar    = $("disk-bar");
+const elDisk2Row   = $("disk2-row");
+const elDisk2Title = $("disk2-title");
+const elDisk2Pct   = $("disk2-percent");
+const elDisk2Used  = $("disk2-used");
+const elDisk2Total = $("disk2-total");
+const elDisk2Bar   = $("disk2-bar");
 const elLastUpdate = $("last-update");
 const elLogSize    = $("log-size");
 
@@ -418,6 +424,19 @@ function render(data) {
     elDiskUsed.textContent  = disk.used_gb + " GB";
     elDiskTotal.textContent = disk.total_gb + " GB";
     elDiskBar.style.width   = (disk.percent || 0) + "%";
+  }
+
+  // Disk 2 (secondary mount point)
+  const disk2 = data.disk2;
+  if (disk2) {
+    elDisk2Row.style.display   = "";
+    elDisk2Title.textContent   = "Disk (" + disk2.mountpoint + ")";
+    elDisk2Pct.textContent     = pct(disk2.percent);
+    elDisk2Used.textContent    = disk2.used_gb + " GB";
+    elDisk2Total.textContent   = disk2.total_gb + " GB";
+    elDisk2Bar.style.width     = (disk2.percent || 0) + "%";
+  } else {
+    elDisk2Row.style.display   = "none";
   }
 
   // History
