@@ -29,6 +29,7 @@ POLL_INTERVAL_SECONDS = int(os.getenv("POLL_INTERVAL_SECONDS", 10))
 RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", 14))
 RESAMPLE_AFTER_HOURS = int(os.getenv("RESAMPLE_AFTER_HOURS", 24))
 NPU_LOAD_PATH = os.getenv("NPU_LOAD_PATH", "/sys/kernel/debug/rknpu/load")
+DISK2_MOUNTPOINT = os.getenv("DISK2_MOUNTPOINT", "").strip()
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +47,9 @@ _prom_swap_percent   = Gauge("rk3566_swap_usage_percent",       "Swap usage perc
 _prom_disk_percent   = Gauge("rk3566_disk_usage_percent",       "Disk usage percentage (root filesystem)")
 _prom_disk_used_gb   = Gauge("rk3566_disk_used_gb",             "Disk space used in GB")
 _prom_disk_total_gb  = Gauge("rk3566_disk_total_gb",            "Total disk space in GB")
+_prom_disk2_percent  = Gauge("rk3566_disk2_usage_percent",      "Disk2 usage percentage (secondary mount)")
+_prom_disk2_used_gb  = Gauge("rk3566_disk2_used_gb",            "Disk2 space used in GB")
+_prom_disk2_total_gb = Gauge("rk3566_disk2_total_gb",           "Disk2 total space in GB")
 _prom_npu_percent    = Gauge("rk3566_npu_usage_percent",        "NPU usage percentage")
 _prom_uptime_seconds = Gauge("rk3566_uptime_seconds",           "System uptime in seconds")
 
@@ -66,6 +70,10 @@ def _update_prometheus_gauges(data: dict) -> None:
     _prom_disk_percent.set(data["disk"]["percent"])
     _prom_disk_used_gb.set(data["disk"]["used_gb"])
     _prom_disk_total_gb.set(data["disk"]["total_gb"])
+    if data.get("disk2") is not None:
+        _prom_disk2_percent.set(data["disk2"]["percent"])
+        _prom_disk2_used_gb.set(data["disk2"]["used_gb"])
+        _prom_disk2_total_gb.set(data["disk2"]["total_gb"])
     if data["npu"]["percent"] is not None:
         _prom_npu_percent.set(data["npu"]["percent"])
     _prom_uptime_seconds.set(data["system"]["uptime_seconds"])
@@ -361,6 +369,20 @@ def collect_metrics() -> dict:
     swap = psutil.swap_memory()
     disk = psutil.disk_usage("/")
 
+    disk2_data = None
+    if DISK2_MOUNTPOINT:
+        try:
+            disk2 = psutil.disk_usage(DISK2_MOUNTPOINT)
+            disk2_data = {
+                "mountpoint": DISK2_MOUNTPOINT,
+                "total_gb": round(disk2.total / 1024 / 1024 / 1024, 1),
+                "used_gb": round(disk2.used / 1024 / 1024 / 1024, 1),
+                "free_gb": round(disk2.free / 1024 / 1024 / 1024, 1),
+                "percent": disk2.percent,
+            }
+        except OSError:
+            logger.warning("Could not read disk usage for DISK2_MOUNTPOINT=%r", DISK2_MOUNTPOINT)
+
     uptime_sec = _get_uptime_seconds()
     cpu_temp = _get_cpu_temp()
     gpu_temp = _get_gpu_temp()
@@ -412,6 +434,7 @@ def collect_metrics() -> dict:
             "free_gb": round(disk.free / 1024 / 1024 / 1024, 1),
             "percent": disk.percent,
         },
+        "disk2": disk2_data,
         "npu": {
             "percent": npu_percent,
         },
@@ -580,6 +603,13 @@ def api_metrics_csv():
         writer.writerow(["disk_used_gb", data["disk"]["used_gb"], "GB"])
         writer.writerow(["disk_total_gb", data["disk"]["total_gb"], "GB"])
         writer.writerow(["disk_free_gb", data["disk"]["free_gb"], "GB"])
+        # Disk 2 (secondary mount, only when DISK2_MOUNTPOINT is configured)
+        if data.get("disk2") is not None:
+            writer.writerow(["disk2_mountpoint", data["disk2"]["mountpoint"], ""])
+            writer.writerow(["disk2_percent", data["disk2"]["percent"], "%"])
+            writer.writerow(["disk2_used_gb", data["disk2"]["used_gb"], "GB"])
+            writer.writerow(["disk2_total_gb", data["disk2"]["total_gb"], "GB"])
+            writer.writerow(["disk2_free_gb", data["disk2"]["free_gb"], "GB"])
         # NPU
         writer.writerow(["npu_percent", data["npu"]["percent"], "%"])
         # System

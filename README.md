@@ -21,7 +21,7 @@ docker compose -f docker-compose.yml up -d --remove-orphans
 
 ## Screenshot
 
-![RK3566 System Monitor Dashboard](https://github.com/user-attachments/assets/fab7dfc8-b977-4f58-9a10-c891ee0bb940)
+![RK3566 System Monitor Dashboard](https://github.com/user-attachments/assets/73709e3d-463c-4f7c-bec6-6d2ddc1b9d9d)
 
 ## Features
 
@@ -73,6 +73,7 @@ Copy `.env` and adjust as needed:
 | `RETENTION_DAYS`       | `14`                        | Number of days to retain rows in the local CSV log. Rows older than this are pruned during hourly maintenance. |
 | `RESAMPLE_AFTER_HOURS` | `24`                        | After this many hours, high-frequency CSV rows are averaged into 1-minute buckets to keep the log file compact. |
 | `NPU_LOAD_PATH`        | `/sys/kernel/debug/rknpu/load` | Path to the sysfs/debugfs file used to read NPU load. Override when your board exposes NPU utilisation at a different path (e.g. `/sys/class/devfreq/fde40000.npu/device/load`). |
+| `DISK2_MOUNTPOINT`     | *(empty)*                   | Mount point or device path of a second disk to monitor (e.g. `/mnt/data` or `/dev/mmcblk0p1`). Leave empty to disable the secondary disk panel. |
 
 ## CSV Export
 
@@ -99,6 +100,11 @@ The file contains the following fields:
 | `disk_used_gb`       | GB      | Disk (/) space in use         |
 | `disk_total_gb`      | GB      | Total disk (/) space          |
 | `disk_free_gb`       | GB      | Free disk (/) space           |
+| `disk2_mountpoint`   |         | Secondary disk mount point (only when `DISK2_MOUNTPOINT` is set) |
+| `disk2_percent`      | %       | Secondary disk utilisation (only when `DISK2_MOUNTPOINT` is set) |
+| `disk2_used_gb`      | GB      | Secondary disk space in use (only when `DISK2_MOUNTPOINT` is set) |
+| `disk2_total_gb`     | GB      | Secondary disk total space (only when `DISK2_MOUNTPOINT` is set) |
+| `disk2_free_gb`      | GB      | Secondary disk free space (only when `DISK2_MOUNTPOINT` is set) |
 | `npu_percent`        | %       | NPU utilisation (if available)|
 | `hostname`           |         | System hostname               |
 | `hardware`           |         | Hardware / CPU model          |
@@ -175,6 +181,9 @@ You can open it directly from the dashboard using the **📊 Prometheus** button
 | `rk3566_disk_usage_percent`        | Gauge | Disk usage – root filesystem (%)         |
 | `rk3566_disk_used_gb`              | Gauge | Disk space used (GB)                     |
 | `rk3566_disk_total_gb`             | Gauge | Total disk space (GB)                    |
+| `rk3566_disk2_usage_percent`       | Gauge | Secondary disk usage (%) – only set when `DISK2_MOUNTPOINT` is configured |
+| `rk3566_disk2_used_gb`             | Gauge | Secondary disk space used (GB) – only set when `DISK2_MOUNTPOINT` is configured |
+| `rk3566_disk2_total_gb`            | Gauge | Secondary disk total space (GB) – only set when `DISK2_MOUNTPOINT` is configured |
 | `rk3566_npu_usage_percent`         | Gauge | NPU usage (%) – only set when available  |
 | `rk3566_uptime_seconds`            | Gauge | System uptime (seconds)                  |
 
