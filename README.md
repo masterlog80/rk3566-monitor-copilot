@@ -21,13 +21,13 @@ docker compose -f docker-compose.yml up -d --remove-orphans
 
 ## Screenshot
 
-![RK3566 System Monitor Dashboard](https://github.com/user-attachments/assets/d1a10c7e-624d-462a-b2c9-1d1fab55ffa1)
+![RK3566 System Monitor Dashboard](https://github.com/user-attachments/assets/603707a9-3dfe-422b-8ae7-a463d40078bf)
 
 ## Features
 
 - **Real-time metrics** via Socket.IO WebSocket (configurable refresh rate, default 10 s)
 - **REST API** fallback with polling support
-- **Charts**: donut gauges for CPU / memory / NPU, line chart for temperature history, combined history chart
+- **Charts**: donut gauges for CPU / memory / NPU, line charts for CPU and GPU temperature history, combined history chart
 - **NPU monitoring**: real-time Neural Processing Unit utilisation via the `rknpu2` kernel driver
 - **System info**: hostname, hardware model, uptime, CPU frequency
 - **CSV export**: one-click download of a full metrics snapshot as a `.csv` file
@@ -87,6 +87,7 @@ The file contains the following fields:
 | `cpu_freq_mhz`       | MHz     | Current CPU frequency         |
 | `cpu_freq_max_mhz`   | MHz     | Maximum CPU frequency         |
 | `cpu_temperature_c`  | °C      | CPU temperature (if available)|
+| `gpu_temperature_c`  | °C      | GPU temperature (if available)|
 | `memory_percent`     | %       | RAM utilisation               |
 | `memory_used_mb`     | MB      | RAM in use                    |
 | `memory_total_mb`    | MB      | Total RAM                     |
@@ -111,14 +112,15 @@ You can also download the CSV directly via the API endpoint `GET /api/metrics/cs
 
 In addition to the on-demand CSV export, the monitor **automatically appends** the graph values to a local CSV file at every poll interval (default: every 10 seconds) while the server is running. The file records the metrics that are plotted in the dashboard charts:
 
-| Column            | Unit  | Description                       |
-|-------------------|-------|-----------------------------------|
-| `timestamp`       | unix  | Unix epoch of the sample          |
-| `datetime`        |       | Human-readable local date/time    |
-| `cpu_percent`     | %     | CPU utilisation                   |
-| `memory_percent`  | %     | RAM utilisation                   |
-| `temperature_c`   | °C    | CPU temperature (null if N/A)     |
-| `npu_percent`     | %     | NPU utilisation (null if N/A)     |
+| Column              | Unit  | Description                       |
+|---------------------|-------|-----------------------------------|
+| `timestamp`         | unix  | Unix epoch of the sample          |
+| `datetime`          |       | Human-readable local date/time    |
+| `cpu_percent`       | %     | CPU utilisation                   |
+| `memory_percent`    | %     | RAM utilisation                   |
+| `temperature_c`     | °C    | CPU temperature (null if N/A)     |
+| `gpu_temperature_c` | °C    | GPU temperature (null if N/A)     |
+| `npu_percent`       | %     | NPU utilisation (null if N/A)     |
 
 The file path is controlled by the `METRICS_LOG_FILE` environment variable (default `metrics_log.csv`).  
 When running via Docker Compose it is automatically written to `/data/metrics_log.csv` inside the container, which is bind-mounted to `./data/metrics_log.csv` on the host so the log **persists across container restarts**.
@@ -133,9 +135,9 @@ Once per hour the server runs a maintenance pass on the CSV log:
 Example log snippet:
 
 ```
-timestamp,datetime,cpu_percent,memory_percent,temperature_c,npu_percent
-1714000000,2024-04-25 10:06:40,12.3,45.1,52.0,0.0
-1714000002,2024-04-25 10:06:42,14.7,45.2,52.1,0.0
+timestamp,datetime,cpu_percent,memory_percent,temperature_c,gpu_temperature_c,npu_percent
+1714000000,2024-04-25 10:06:40,12.3,45.1,52.0,48.0,0.0
+1714000002,2024-04-25 10:06:42,14.7,45.2,52.1,48.1,0.0
 ```
 
 ## API Endpoints
@@ -164,6 +166,7 @@ You can open it directly from the dashboard using the **📊 Prometheus** button
 |------------------------------------|-------|------------------------------------------|
 | `rk3566_cpu_usage_percent`         | Gauge | CPU usage (%)                            |
 | `rk3566_cpu_temperature_celsius`   | Gauge | CPU temperature (°C)                     |
+| `rk3566_gpu_temperature_celsius`   | Gauge | GPU temperature (°C)                     |
 | `rk3566_cpu_frequency_mhz`         | Gauge | Current CPU frequency (MHz)              |
 | `rk3566_memory_usage_percent`      | Gauge | Memory usage (%)                         |
 | `rk3566_memory_used_mb`            | Gauge | Memory used (MB)                         |
