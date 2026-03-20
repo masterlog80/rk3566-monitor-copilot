@@ -21,7 +21,7 @@ docker compose -f docker-compose.yml up -d --remove-orphans
 
 ## Screenshot
 
-![RK3566 System Monitor Dashboard](https://github.com/user-attachments/assets/9f9fdf6a-9ff5-47ad-a544-afb4001e3b12)
+![RK3566 System Monitor Dashboard](https://github.com/user-attachments/assets/fab7dfc8-b977-4f58-9a10-c891ee0bb940)
 
 ## Features
 
