@@ -37,6 +37,7 @@ NPU_LOAD_PATH = os.getenv("NPU_LOAD_PATH", "/sys/kernel/debug/rknpu/load")
 
 _prom_cpu_percent    = Gauge("rk3566_cpu_usage_percent",        "CPU usage percentage")
 _prom_cpu_temp       = Gauge("rk3566_cpu_temperature_celsius",  "CPU temperature in Celsius")
+_prom_gpu_temp       = Gauge("rk3566_gpu_temperature_celsius",  "GPU temperature in Celsius")
 _prom_cpu_freq_mhz   = Gauge("rk3566_cpu_frequency_mhz",        "Current CPU frequency in MHz")
 _prom_mem_percent    = Gauge("rk3566_memory_usage_percent",     "Memory usage percentage")
 _prom_mem_used_mb    = Gauge("rk3566_memory_used_mb",           "Memory used in MB")
@@ -54,6 +55,8 @@ def _update_prometheus_gauges(data: dict) -> None:
     _prom_cpu_percent.set(data["cpu"]["percent"])
     if data["cpu"]["temperature_c"] is not None:
         _prom_cpu_temp.set(data["cpu"]["temperature_c"])
+    if data["gpu"]["temperature_c"] is not None:
+        _prom_gpu_temp.set(data["gpu"]["temperature_c"])
     if data["cpu"]["freq_mhz"] is not None:
         _prom_cpu_freq_mhz.set(data["cpu"]["freq_mhz"])
     _prom_mem_percent.set(data["memory"]["percent"])
@@ -108,6 +111,26 @@ def _get_cpu_temp() -> float | None:
                     return round(entries[0].current, 1)
     except AttributeError:
         pass
+    return None
+
+
+def _get_gpu_temp() -> float | None:
+    """Return the GPU temperature in °C from the thermal zone, or None."""
+    for zone in range(10):
+        path = f"/sys/class/thermal/thermal_zone{zone}/type"
+        try:
+            zone_type = _read_proc_file(path)
+        except OSError:
+            break
+        if "gpu" in zone_type.lower():
+            temp_raw = _read_proc_file(
+                f"/sys/class/thermal/thermal_zone{zone}/temp"
+            )
+            if temp_raw:
+                try:
+                    return round(int(temp_raw) / 1000.0, 1)
+                except ValueError:
+                    pass
     return None
 
 
@@ -174,6 +197,7 @@ _CSV_HEADER = [
     "cpu_percent",
     "memory_percent",
     "temperature_c",
+    "gpu_temperature_c",
     "npu_percent",
 ]
 
@@ -202,6 +226,7 @@ def _append_metrics_to_csv(data: dict) -> None:
                 data["cpu"]["percent"],
                 data["memory"]["percent"],
                 data["cpu"]["temperature_c"],
+                data["gpu"]["temperature_c"],
                 data["npu"]["percent"],
             ])
     except OSError:
@@ -255,6 +280,8 @@ def _maintain_csv_log() -> None:
                     "mem": 0.0,
                     "temp_sum": 0.0,
                     "temp_count": 0,
+                    "gpu_temp_sum": 0.0,
+                    "gpu_temp_count": 0,
                     "npu_sum": 0.0,
                     "npu_count": 0,
                 }
@@ -266,6 +293,10 @@ def _maintain_csv_log() -> None:
             if temp_raw not in ("", "None", None):
                 b["temp_sum"] += float(temp_raw)
                 b["temp_count"] += 1
+            gpu_temp_raw = row.get("gpu_temperature_c", "")
+            if gpu_temp_raw not in ("", "None", None):
+                b["gpu_temp_sum"] += float(gpu_temp_raw)
+                b["gpu_temp_count"] += 1
             npu_raw = row.get("npu_percent", "")
             if npu_raw not in ("", "None", None):
                 b["npu_sum"] += float(npu_raw)
@@ -285,6 +316,11 @@ def _maintain_csv_log() -> None:
                 "temperature_c": (
                     round(b["temp_sum"] / b["temp_count"], 2)
                     if b["temp_count"]
+                    else ""
+                ),
+                "gpu_temperature_c": (
+                    round(b["gpu_temp_sum"] / b["gpu_temp_count"], 2)
+                    if b["gpu_temp_count"]
                     else ""
                 ),
                 "npu_percent": (
@@ -327,6 +363,7 @@ def collect_metrics() -> dict:
 
     uptime_sec = _get_uptime_seconds()
     cpu_temp = _get_cpu_temp()
+    gpu_temp = _get_gpu_temp()
     npu_percent = _get_npu_usage()
 
     # /proc/cpuinfo – grab Model name / Hardware line
@@ -377,6 +414,9 @@ def collect_metrics() -> dict:
         },
         "npu": {
             "percent": npu_percent,
+        },
+        "gpu": {
+            "temperature_c": gpu_temp,
         },
         "system": {
             "uptime_seconds": uptime_sec,
@@ -455,6 +495,7 @@ def api_history():
                     "cpu_percent": _float_or_none(row.get("cpu_percent")),
                     "memory_percent": _float_or_none(row.get("memory_percent")),
                     "temperature_c": _float_or_none(row.get("temperature_c")),
+                    "gpu_temperature_c": _float_or_none(row.get("gpu_temperature_c")),
                     "npu_percent": _float_or_none(row.get("npu_percent")),
                 })
     except OSError:
@@ -525,6 +566,7 @@ def api_metrics_csv():
         writer.writerow(["cpu_freq_mhz", data["cpu"]["freq_mhz"], "MHz"])
         writer.writerow(["cpu_freq_max_mhz", data["cpu"]["freq_max_mhz"], "MHz"])
         writer.writerow(["cpu_temperature_c", data["cpu"]["temperature_c"], "°C"])
+        writer.writerow(["gpu_temperature_c", data["gpu"]["temperature_c"], "°C"])
         # Memory
         writer.writerow(["memory_percent", data["memory"]["percent"], "%"])
         writer.writerow(["memory_used_mb", data["memory"]["used_mb"], "MB"])

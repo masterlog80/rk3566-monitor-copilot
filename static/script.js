@@ -36,6 +36,7 @@ const elCpuFreq    = $("cpu-freq");
 const elCpuPct     = $("cpu-percent");
 const elMemPct     = $("mem-percent");
 const elCpuTemp    = $("cpu-temp");
+const elGpuTemp    = $("gpu-temp");
 const elNpuPct     = $("npu-percent");
 const elMemUsed    = $("mem-used");
 const elMemTotal   = $("mem-total");
@@ -177,7 +178,8 @@ function makeTempLine(id) {
 const cpuDonut   = makeDonut("cpuChart",  "CPU",  "#58a6ff");
 const memDonut   = makeDonut("memChart",  "Mem",  "#3fb950");
 const npuDonut   = makeDonut("npuChart",  "NPU",  "#bc8cff");
-const tempLine   = makeTempLine("tempChart");
+const tempLine      = makeTempLine("tempChart");
+const gpuTempLine   = makeTempLine("gpuTempChart");
 const histChart  = new Chart($("historyChart"), {
   type: "line",
   data: {
@@ -346,9 +348,19 @@ function pushTempHistory(ts, tempVal) {
   tempLine.update("none");
 }
 
+function pushGpuTempHistory(ts, tempVal) {
+  gpuTempLine.data.labels.push(new Date(ts * 1000).toLocaleTimeString());
+  gpuTempLine.data.datasets[0].data.push(tempVal);
+  if (gpuTempLine.data.labels.length > MAX_HISTORY_LEN) {
+    gpuTempLine.data.labels.shift();
+    gpuTempLine.data.datasets[0].data.shift();
+  }
+  gpuTempLine.update("none");
+}
+
 // ── Render metrics ────────────────────────────────────────────────────────
 function render(data) {
-  const { cpu, memory, disk, npu, system, timestamp } = data;
+  const { cpu, memory, disk, npu, gpu, system, timestamp } = data;
 
   // Info bar
   elHostname.textContent  = system.hostname || "–";
@@ -375,6 +387,14 @@ function render(data) {
     pushTempHistory(timestamp, cpu.temperature_c);
   } else {
     elCpuTemp.textContent = "N/A";
+  }
+
+  // GPU Temperature
+  if (gpu && gpu.temperature_c != null) {
+    elGpuTemp.textContent = gpu.temperature_c + " °C";
+    pushGpuTempHistory(timestamp, gpu.temperature_c);
+  } else {
+    elGpuTemp.textContent = "N/A";
   }
 
   // NPU
@@ -489,6 +509,10 @@ async function loadHistory() {
         tempLine.data.labels.push(new Date(tsMs).toLocaleTimeString());
         tempLine.data.datasets[0].data.push(row.temperature_c);
       }
+      if (row.gpu_temperature_c != null) {
+        gpuTempLine.data.labels.push(new Date(tsMs).toLocaleTimeString());
+        gpuTempLine.data.datasets[0].data.push(row.gpu_temperature_c);
+      }
     });
 
     // Trim to max allowed length
@@ -502,9 +526,14 @@ async function loadHistory() {
       tempLine.data.labels.shift();
       tempLine.data.datasets[0].data.shift();
     }
+    while (gpuTempLine.data.labels.length > MAX_HISTORY_LEN) {
+      gpuTempLine.data.labels.shift();
+      gpuTempLine.data.datasets[0].data.shift();
+    }
 
     updateHistChart();
     tempLine.update("none");
+    gpuTempLine.update("none");
   } catch (err) {
     console.warn("Failed to load history:", err);
   }
