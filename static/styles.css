@@ -203,8 +203,9 @@ html, body {
   flex-direction: column;
 }
 
-/* ── Swap & Disk section ─────────────────────────────────────────────── */
-.swap-row {
+/* ── Swap & Disk sections ─────────────────────────────────────────────── */
+.swap-row,
+.disk-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 1rem;
