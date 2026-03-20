@@ -135,7 +135,14 @@ html, body {
 /* ── Cards grid ─────────────────────────────────────────────────────── */
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+/* ── Temperature cards grid ─────────────────────────────────────────── */
+.temp-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 1rem;
 }
 
@@ -346,4 +353,5 @@ html, body {
   .topbar-info { font-size: .75rem; }
   .metric-value { font-size: 1.3rem; }
   .cards { grid-template-columns: 1fr; }
+  .temp-cards { grid-template-columns: 1fr; }
 }
