@@ -70,6 +70,20 @@ html, body {
   color: var(--text-dim);
 }
 
+.topbar-hostname {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.topbar-hostname-label {
+  font-size: .6rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-dim);
+  opacity: .7;
+}
+
 .badge {
   padding: .2rem .65rem;
   border-radius: 999px;

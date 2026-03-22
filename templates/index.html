@@ -25,7 +25,10 @@
       <span>RK3566 Monitor</span>
     </div>
     <div class="topbar-info">
-      <span id="hostname">–</span>
+      <span class="topbar-hostname">
+        <span class="topbar-hostname-label">Hostname</span>
+        <span id="hostname">–</span>
+      </span>
       <a class="btn-csv" href="/api/metrics/csv" download>⬇ Export CSV</a>
       <a class="btn-prom" href="/metrics" target="_blank" rel="noopener">📊 Prometheus</a>
       <span class="badge" id="conn-status">Connecting…</span>
