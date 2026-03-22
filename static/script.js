@@ -30,6 +30,7 @@ const history = {
 const $ = id => document.getElementById(id);
 const connStatus   = $("conn-status");
 const elHostname   = $("hostname");
+const elInfoHostname = $("info-hostname");
 const elHwModel    = $("hw-model");
 const elUptime     = $("uptime");
 const elCpuCount   = $("cpu-count");
@@ -375,6 +376,7 @@ function render(data) {
 
   // Info bar
   elHostname.textContent  = system.hostname || "–";
+  elInfoHostname.textContent = system.hostname || "–";
   elHwModel.textContent   = system.hardware || "–";
   elUptime.textContent    = system.uptime_human || "–";
   elCpuCount.textContent  = cpu.count != null ? cpu.count + " cores" : "–";
