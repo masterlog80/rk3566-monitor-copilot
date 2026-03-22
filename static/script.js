@@ -10,6 +10,7 @@
 const POLL_INTERVAL_MS = (window.SERVER_CONFIG && window.SERVER_CONFIG.pollIntervalMs)
   ? window.SERVER_CONFIG.pollIntervalMs
   : 10000;                                // fallback: 10 s
+const RESAMPLE_INTERVAL_MS = 60 * 1000; // server resamples old data to 1-minute buckets
 const MAX_HISTORY_SECONDS = 1209600;    // retain up to 2 weeks of data
 const MAX_HISTORY_LEN = Math.ceil(MAX_HISTORY_SECONDS * 1000 / POLL_INTERVAL_MS);
 
@@ -295,7 +296,11 @@ function pct(val) {
 // the last real sample keeps it invisible on the x-axis while still signalling
 // the absence of data to Chart.js (which treats null as "no value here").
 function maybeInsertGap(lastTs, currentTs) {
-  if (currentTs - lastTs > 2 * POLL_INTERVAL_MS) {
+  // Use 2× the larger of the polling interval or the 1-minute resampling
+  // interval so that resampled history points (~60 s apart) are never
+  // mistaken for gaps and rendered as invisible isolated nulls.
+  const gapThresholdMs = 2 * Math.max(POLL_INTERVAL_MS, RESAMPLE_INTERVAL_MS);
+  if (currentTs - lastTs > gapThresholdMs) {
     history.labels.push(lastTs + 1);
     history.cpu.push(null);
     history.mem.push(null);
