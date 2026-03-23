@@ -29,7 +29,7 @@ docker compose -f docker-compose.yml up -d --remove-orphans
 - **REST API** fallback with polling support
 - **Charts**: donut gauges for CPU / memory / NPU, line charts for CPU and GPU temperature history, combined history chart
 - **NPU monitoring**: real-time Neural Processing Unit utilisation via the `rknpu2` kernel driver
-- **System info**: hostname, hardware model, uptime, CPU frequency
+- **System info**: pod/container name, node hostname, hardware model, uptime, CPU frequency
 - **CSV export**: one-click download of a full metrics snapshot as a `.csv` file
 - **Local metrics log**: graph values (CPU%, memory%, temperature, NPU%) are automatically appended to a local CSV file at each poll interval, with automatic pruning and resampling
 - **Prometheus metrics**: a `/metrics` endpoint exposes all system metrics in Prometheus text format for scraping by Prometheus, Grafana, or any OpenMetrics-compatible tool
@@ -106,7 +106,8 @@ The file contains the following fields:
 | `disk2_total_gb`     | GB      | Secondary disk total space (only when `DISK2_MOUNTPOINT` is set) |
 | `disk2_free_gb`      | GB      | Secondary disk free space (only when `DISK2_MOUNTPOINT` is set) |
 | `npu_percent`        | %       | NPU utilisation (if available)|
-| `hostname`           |         | System hostname               |
+| `pod`                |         | Pod / container name          |
+| `node`               |         | Node hostname                 |
 | `hardware`           |         | Hardware / CPU model          |
 | `uptime_seconds`     | s       | Uptime in seconds             |
 | `uptime_human`       |         | Human-readable uptime         |
