@@ -393,6 +393,13 @@ def collect_metrics() -> dict:
     gpu_temp = _get_gpu_temp()
     npu_percent = _get_npu_usage()
 
+    cpu_governor = None
+    try:
+        with open("/sys/devices/system/cpu/cpufreq/policy0/scaling_governor", "r") as fh:
+            cpu_governor = fh.read().strip()
+    except OSError:
+        pass
+
     # /proc/cpuinfo – grab Model name / Hardware line
     hw_model = "Unknown"
     try:
@@ -422,6 +429,7 @@ def collect_metrics() -> dict:
             "count": cpu_count,
             "freq_mhz": round(cpu_freq.current, 1) if cpu_freq else None,
             "freq_max_mhz": round(cpu_freq.max, 1) if cpu_freq else None,
+            "governor": cpu_governor,
             "temperature_c": cpu_temp,
         },
         "memory": {
