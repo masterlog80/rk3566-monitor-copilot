@@ -445,7 +445,8 @@ def collect_metrics() -> dict:
             "uptime_seconds": uptime_sec,
             "uptime_human": _format_uptime(uptime_sec),
             "hardware": hw_model,
-            "hostname": _read_proc_file("/proc/sys/kernel/hostname", "unknown"),
+            "pod": _read_proc_file("/proc/sys/kernel/hostname", "unknown"),
+            "node": _read_proc_file("/etc/hostname", "unknown"),
             "os_release": _read_proc_file("/proc/version", "N/A").split(" ", 3)[:3],
         },
         "timestamp": int(time.time()),
@@ -613,7 +614,8 @@ def api_metrics_csv():
         # NPU
         writer.writerow(["npu_percent", data["npu"]["percent"], "%"])
         # System
-        writer.writerow(["hostname", data["system"]["hostname"], ""])
+        writer.writerow(["pod", data["system"]["pod"], ""])
+        writer.writerow(["node", data["system"]["node"], ""])
         writer.writerow(["hardware", data["system"]["hardware"], ""])
         writer.writerow(["uptime_seconds", data["system"]["uptime_seconds"], "s"])
         writer.writerow(["uptime_human", data["system"]["uptime_human"], ""])

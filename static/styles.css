@@ -114,6 +114,11 @@ html, body {
   padding: .85rem 1.25rem;
 }
 
+.info-break {
+  flex-basis: 100%;
+  height: 0;
+}
+
 .info-item {
   display: flex;
   flex-direction: column;

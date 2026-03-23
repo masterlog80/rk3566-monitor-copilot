@@ -29,7 +29,8 @@ const history = {
 // ── DOM refs ─────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const connStatus   = $("conn-status");
-const elInfoHostname = $("info-hostname");
+const elInfoPod      = $("info-pod");
+const elInfoNode     = $("info-node");
 const elHwModel    = $("hw-model");
 const elUptime     = $("uptime");
 const elCpuCount   = $("cpu-count");
@@ -374,7 +375,8 @@ function render(data) {
   const { cpu, memory, disk, npu, gpu, system, timestamp } = data;
 
   // Info bar
-  elInfoHostname.textContent = system.hostname || "–";
+  elInfoPod.textContent  = system.pod  || "–";
+  elInfoNode.textContent = system.node || "–";
   elHwModel.textContent   = system.hardware || "–";
   elUptime.textContent    = system.uptime_human || "–";
   elCpuCount.textContent  = cpu.count != null ? cpu.count + " cores" : "–";
