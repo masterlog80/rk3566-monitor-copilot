@@ -26,8 +26,6 @@
     </div>
     <div class="topbar-info">
       <span id="hostname">–</span>
-      <a class="btn-csv" href="/api/metrics/csv" download>⬇ Export CSV</a>
-      <a class="btn-prom" href="/metrics" target="_blank" rel="noopener">📊 Prometheus</a>
       <span class="badge" id="conn-status">Connecting…</span>
     </div>
   </header>
@@ -222,6 +220,10 @@
 
   <footer class="footer">
     <span>RK3566 Monitor &copy; 2025 &mdash; Real-time system dashboard</span>
+    <div class="footer-links">
+      <a class="btn-csv" href="/api/metrics/csv" download>⬇ Export CSV</a>
+      <a class="btn-prom" href="/metrics" target="_blank" rel="noopener">📊 Prometheus</a>
+    </div>
     <span id="last-update">–</span>
   </footer>
 

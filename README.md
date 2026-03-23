@@ -21,7 +21,7 @@ docker compose -f docker-compose.yml up -d --remove-orphans
 
 ## Screenshot
 
-![RK3566 System Monitor Dashboard](https://github.com/user-attachments/assets/6be22027-75a9-47db-84b4-4e5060b0ca12)
+![RK3566 System Monitor Dashboard](docs/screenshot.png)
 
 ## Features
 
@@ -77,7 +77,7 @@ Copy `.env` and adjust as needed:
 
 ## CSV Export
 
-Click the **⬇ Export CSV** button in the top-right corner of the dashboard to download a snapshot of all current metrics as a `.csv` file.
+Click the **⬇ Export CSV** button in the footer of the dashboard to download a snapshot of all current metrics as a `.csv` file.
 
 The file contains the following fields:
 
@@ -164,7 +164,7 @@ timestamp,datetime,cpu_percent,memory_percent,temperature_c,gpu_temperature_c,np
 ## Prometheus Integration
 
 The `/metrics` endpoint exposes all system metrics in the [Prometheus text exposition format](https://prometheus.io/docs/instrumenting/exposition_formats/).  
-You can open it directly from the dashboard using the **📊 Prometheus** button in the top bar.
+You can open it directly from the dashboard using the **📊 Prometheus** button in the footer.
 
 ### Exposed metrics
 
