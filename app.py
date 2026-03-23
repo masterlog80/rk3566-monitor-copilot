@@ -83,13 +83,18 @@ def _update_prometheus_gauges(data: dict) -> None:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _read_proc_file(path: str, default: str = "") -> str:
-    """Read a single-line value from a /proc file safely."""
+def _read_file(path: str, default: str = "") -> str:
+    """Read and strip the contents of a file safely."""
     try:
         with open(path, "r") as fh:
             return fh.read().strip()
     except OSError:
         return default
+
+
+def _read_proc_file(path: str, default: str = "") -> str:
+    """Read a single-line value from a /proc file safely."""
+    return _read_file(path, default)
 
 
 def _get_cpu_temp() -> float | None:
@@ -446,7 +451,7 @@ def collect_metrics() -> dict:
             "uptime_human": _format_uptime(uptime_sec),
             "hardware": hw_model,
             "pod": _read_proc_file("/proc/sys/kernel/hostname", "unknown"),
-            "node": _read_proc_file("/etc/hostname", "unknown"),
+            "node": _read_file("/etc/hostname", "unknown"),
             "os_release": _read_proc_file("/proc/version", "N/A").split(" ", 3)[:3],
         },
         "timestamp": int(time.time()),
