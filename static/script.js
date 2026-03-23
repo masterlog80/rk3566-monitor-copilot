@@ -35,6 +35,7 @@ const elHwModel    = $("hw-model");
 const elUptime     = $("uptime");
 const elCpuCount   = $("cpu-count");
 const elCpuFreq    = $("cpu-freq");
+const elCpuGovernor = $("cpu-governor");
 const elCpuPct     = $("cpu-percent");
 const elMemPct     = $("mem-percent");
 const elCpuTemp    = $("cpu-temp");
@@ -383,6 +384,7 @@ function render(data) {
   elCpuFreq.textContent   = cpu.freq_mhz != null
     ? `${cpu.freq_mhz} MHz (max ${cpu.freq_max_mhz} MHz)`
     : "–";
+  elCpuGovernor.textContent = cpu.governor || "–";
 
   // CPU
   elCpuPct.textContent = pct(cpu.percent);
