@@ -8,12 +8,28 @@ services:
       - proxy
     ports:
       - "5000:5000"
-    env_file:
-      - .env
+    #env_file:
+      #- .env
     environment:
+    environment:
+      # Path for the local CSV log file that records graph values.
+      # When running via Docker Compose the recommended path is /data/metrics_log.csv
+      # so that the file is written to the mounted ./data volume.
       - METRICS_LOG_FILE=/data/metrics_log.csv
-    # Grant read access to host /proc and /sys for real hardware metrics.
-    # The ./data directory is mounted read-write so the CSV log persists.
+      - HOST=0.0.0.0
+      - PORT=5000
+      - SECRET_KEY=change-me-in-production
+      - FLASK_ENV=production
+      - LOG_LEVEL=INFO
+      # How often (in seconds) metrics are collected and broadcast to clients.
+      - POLL_INTERVAL_SECONDS=5 
+      # How many days of data to retain in the local CSV log (older rows are pruned).
+      - RETENTION_DAYS=14
+      # After this many hours, high-frequency rows in the CSV log are resampled
+      # (averaged) into 1-minute buckets to reduce file size.
+      - RESAMPLE_AFTER_HOURS=48
+      #- NPU_LOAD_PATH=/sys/kernel/debug/rknpu/load
+      #- DISK2_MOUNTPOINT=/dev/zram1
     volumes:
       - /proc:/proc:ro
       - /sys:/sys:ro
