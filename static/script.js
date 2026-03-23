@@ -29,7 +29,6 @@ const history = {
 // ── DOM refs ─────────────────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const connStatus   = $("conn-status");
-const elHostname   = $("hostname");
 const elInfoHostname = $("info-hostname");
 const elHwModel    = $("hw-model");
 const elUptime     = $("uptime");
@@ -375,7 +374,6 @@ function render(data) {
   const { cpu, memory, disk, npu, gpu, system, timestamp } = data;
 
   // Info bar
-  elHostname.textContent  = system.hostname || "–";
   elInfoHostname.textContent = system.hostname || "–";
   elHwModel.textContent   = system.hardware || "–";
   elUptime.textContent    = system.uptime_human || "–";

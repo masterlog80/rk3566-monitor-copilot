@@ -329,6 +329,18 @@ html, body {
   color: var(--text);
 }
 
+/* ── Export / Integrations Section ─────────────────────────────────── */
+.export-section {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding: .75rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
 /* ── Footer ─────────────────────────────────────────────────────────── */
 .footer {
   text-align: center;
@@ -341,12 +353,6 @@ html, body {
   align-items: center;
   flex-wrap: wrap;
   gap: .5rem;
-}
-
-.footer-links {
-  display: flex;
-  align-items: center;
-  gap: .75rem;
 }
 
 /* ── Responsive ─────────────────────────────────────────────────────── */
