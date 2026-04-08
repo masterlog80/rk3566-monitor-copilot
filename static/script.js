@@ -24,6 +24,7 @@ const history = {
   mem:         [],
   temp:        [],
   npu:         [],
+  freq:        [],   // CPU frequency (MHz)
 };
 
 // ── DOM refs ─────────────────────────────────────────────────────────────
@@ -35,6 +36,7 @@ const elHwModel    = $("hw-model");
 const elUptime     = $("uptime");
 const elCpuCount   = $("cpu-count");
 const elCpuFreq    = $("cpu-freq");
+const elCpuFreqCard = $("cpu-freq-card");
 const elCpuGovernor = $("cpu-governor");
 const elCpuPct     = $("cpu-percent");
 const elMemPct     = $("mem-percent");
@@ -183,20 +185,63 @@ function makeTempLine(id) {
   });
 }
 
+// CPU frequency line chart (range 0–2000 MHz)
+function makeFreqLine(id) {
+  return new Chart($(id), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [{
+        label: "Freq (MHz)",
+        data: [],
+        borderColor: "#e3b341",
+        backgroundColor: "#e3b34122",
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.3,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      scales: {
+        x: { display: false },
+        y: {
+          min: 0,
+          ticks: { callback: v => v + " MHz" },
+          grid: { color: "#21262d" },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` ${ctx.parsed.y.toFixed(0)} MHz`,
+          },
+        },
+      },
+    },
+  });
+}
+
 // ── Instantiate charts ────────────────────────────────────────────────────
 const cpuDonut   = makeDonut("cpuChart",  "CPU",  "#58a6ff");
 const memDonut   = makeDonut("memChart",  "Mem",  "#3fb950");
 const npuDonut   = makeDonut("npuChart",  "NPU",  "#bc8cff");
 const tempLine      = makeTempLine("tempChart");
 const gpuTempLine   = makeTempLine("gpuTempChart");
+const freqLine      = makeFreqLine("freqChart");
 const histChart  = new Chart($("historyChart"), {
   type: "line",
   data: {
     labels: [],
     datasets: [
-      { label: "CPU %",    borderColor: "#58a6ff", backgroundColor: "#58a6ff22" },
-      { label: "Memory %", borderColor: "#3fb950", backgroundColor: "#3fb95022" },
-      { label: "NPU %",    borderColor: "#bc8cff", backgroundColor: "#bc8cff22" },
+      { label: "CPU %",    borderColor: "#58a6ff", backgroundColor: "#58a6ff22", yAxisID: "y" },
+      { label: "Memory %", borderColor: "#3fb950", backgroundColor: "#3fb95022", yAxisID: "y" },
+      { label: "NPU %",    borderColor: "#bc8cff", backgroundColor: "#bc8cff22", yAxisID: "y" },
+      { label: "CPU Freq (MHz)", borderColor: "#e3b341", backgroundColor: "#e3b34122", yAxisID: "y1" },
     ].map(d => Object.assign(d, {
       data: [],
       borderWidth: 2,
@@ -247,8 +292,15 @@ const histChart  = new Chart($("historyChart"), {
       y: {
         min: 0,
         max: 100,
+        position: "left",
         ticks: { callback: v => v + "%" },
         grid: { color: "#21262d" },
+      },
+      y1: {
+        min: 0,
+        position: "right",
+        ticks: { callback: v => v + " MHz", color: "#e3b341" },
+        grid: { drawOnChartArea: false },
       },
     },
     plugins: {
@@ -266,7 +318,13 @@ const histChart  = new Chart($("historyChart"), {
             if (ts == null) return "";
             return new Date(ts).toLocaleString();
           },
-          label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y !== null ? ctx.parsed.y.toFixed(1) + " %" : "N/A"}`,
+          label: ctx => {
+            if (ctx.parsed.y === null) return ` ${ctx.dataset.label}: N/A`;
+            if (ctx.dataset.yAxisID === "y1") {
+              return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)} MHz`;
+            }
+            return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} %`;
+          },
         },
       },
       zoom: {
@@ -307,6 +365,7 @@ function maybeInsertGap(lastTs, currentTs) {
     history.cpu.push(null);
     history.mem.push(null);
     history.npu.push(null);
+    history.freq.push(null);
   }
 }
 
@@ -323,10 +382,11 @@ function updateHistChart() {
   histChart.data.datasets[0].data  = history.cpu.slice(start);
   histChart.data.datasets[1].data  = history.mem.slice(start);
   histChart.data.datasets[2].data  = history.npu.slice(start);
+  histChart.data.datasets[3].data  = history.freq.slice(start);
   histChart.update("none");
 }
 
-function pushHistory(ts, cpuVal, memVal, npuVal) {
+function pushHistory(ts, cpuVal, memVal, npuVal, freqVal) {
   const tsMs = ts * 1000;
   if (history.labels.length > 0) {
     const lastTs = history.labels[history.labels.length - 1];
@@ -336,17 +396,20 @@ function pushHistory(ts, cpuVal, memVal, npuVal) {
       history.cpu.shift();
       history.mem.shift();
       history.npu.shift();
+      history.freq.shift();
     }
   }
   history.labels.push(tsMs);
   history.cpu.push(cpuVal);
   history.mem.push(memVal);
   history.npu.push(npuVal != null ? npuVal : null);
+  history.freq.push(freqVal != null ? freqVal : null);
   if (history.labels.length > MAX_HISTORY_LEN) {
     history.labels.shift();
     history.cpu.shift();
     history.mem.shift();
     history.npu.shift();
+    history.freq.shift();
   }
   updateHistChart();
 }
@@ -371,6 +434,16 @@ function pushGpuTempHistory(ts, tempVal) {
   gpuTempLine.update("none");
 }
 
+function pushFreqHistory(ts, freqVal) {
+  freqLine.data.labels.push(new Date(ts * 1000).toLocaleTimeString());
+  freqLine.data.datasets[0].data.push(freqVal);
+  if (freqLine.data.labels.length > MAX_HISTORY_LEN) {
+    freqLine.data.labels.shift();
+    freqLine.data.datasets[0].data.shift();
+  }
+  freqLine.update("none");
+}
+
 // ── Render metrics ────────────────────────────────────────────────────────
 function render(data) {
   const { cpu, memory, disk, npu, gpu, system, timestamp } = data;
@@ -385,8 +458,6 @@ function render(data) {
     ? `${cpu.freq_mhz} MHz (max ${cpu.freq_max_mhz} MHz)`
     : "–";
   elCpuGovernor.textContent = cpu.governor || "–";
-
-  // CPU
   elCpuPct.textContent = pct(cpu.percent);
   updateDonut(cpuDonut, cpu.percent);
 
@@ -410,6 +481,14 @@ function render(data) {
     pushGpuTempHistory(timestamp, gpu.temperature_c);
   } else {
     elGpuTemp.textContent = "N/A";
+  }
+
+  // CPU Frequency card
+  if (cpu.freq_mhz != null) {
+    elCpuFreqCard.textContent = cpu.freq_mhz + " MHz";
+    pushFreqHistory(timestamp, cpu.freq_mhz);
+  } else {
+    elCpuFreqCard.textContent = "N/A";
   }
 
   // NPU
@@ -449,7 +528,7 @@ function render(data) {
   }
 
   // History
-  pushHistory(timestamp, cpu.percent, memory.percent, npu ? npu.percent : null);
+  pushHistory(timestamp, cpu.percent, memory.percent, npu ? npu.percent : null, cpu.freq_mhz);
 
   // Last update
   elLastUpdate.textContent = "Last update: " + new Date(timestamp * 1000).toLocaleTimeString();
@@ -533,6 +612,7 @@ async function loadHistory() {
       history.cpu.push(row.cpu_percent);
       history.mem.push(row.memory_percent);
       history.npu.push(row.npu_percent);
+      history.freq.push(row.cpu_freq_mhz != null ? row.cpu_freq_mhz : null);
       if (row.temperature_c != null) {
         tempLine.data.labels.push(new Date(tsMs).toLocaleTimeString());
         tempLine.data.datasets[0].data.push(row.temperature_c);
@@ -540,6 +620,10 @@ async function loadHistory() {
       if (row.gpu_temperature_c != null) {
         gpuTempLine.data.labels.push(new Date(tsMs).toLocaleTimeString());
         gpuTempLine.data.datasets[0].data.push(row.gpu_temperature_c);
+      }
+      if (row.cpu_freq_mhz != null) {
+        freqLine.data.labels.push(new Date(tsMs).toLocaleTimeString());
+        freqLine.data.datasets[0].data.push(row.cpu_freq_mhz);
       }
     });
 
@@ -549,6 +633,7 @@ async function loadHistory() {
       history.cpu.shift();
       history.mem.shift();
       history.npu.shift();
+      history.freq.shift();
     }
     while (tempLine.data.labels.length > MAX_HISTORY_LEN) {
       tempLine.data.labels.shift();
@@ -558,10 +643,15 @@ async function loadHistory() {
       gpuTempLine.data.labels.shift();
       gpuTempLine.data.datasets[0].data.shift();
     }
+    while (freqLine.data.labels.length > MAX_HISTORY_LEN) {
+      freqLine.data.labels.shift();
+      freqLine.data.datasets[0].data.shift();
+    }
 
     updateHistChart();
     tempLine.update("none");
     gpuTempLine.update("none");
+    freqLine.update("none");
   } catch (err) {
     console.warn("Failed to load history:", err);
   }
