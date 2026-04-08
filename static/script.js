@@ -210,6 +210,7 @@ function makeFreqLine(id) {
         x: { display: false },
         y: {
           min: 0,
+          max: 2000,
           ticks: { callback: v => v + " MHz" },
           grid: { color: "#21262d" },
         },
@@ -458,6 +459,8 @@ function render(data) {
     ? `${cpu.freq_mhz} MHz (max ${cpu.freq_max_mhz} MHz)`
     : "–";
   elCpuGovernor.textContent = cpu.governor || "–";
+
+  // CPU
   elCpuPct.textContent = pct(cpu.percent);
   updateDonut(cpuDonut, cpu.percent);
 
