@@ -124,13 +124,24 @@
           <canvas id="gpuTempChart"></canvas>
         </div>
       </div>
+
+      <!-- CPU Frequency Card -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">CPU Freq.</h2>
+          <span class="metric-value" id="cpu-freq-card">–</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="freqChart"></canvas>
+        </div>
+      </div>
     </section>
 
     <!-- History Charts -->
     <section class="history">
       <div class="card wide">
         <div class="card-header">
-          <h2 class="card-title">CPU, Memory &amp; NPU History</h2>
+          <h2 class="card-title">CPU, Memory, NPU &amp; CPU Freq History</h2>
           <div class="timeframe-btns">
             <button class="btn-tf active" data-seconds="60">1 min</button>
             <button class="btn-tf" data-seconds="300">5 min</button>

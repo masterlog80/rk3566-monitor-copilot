@@ -212,6 +212,7 @@ _CSV_HEADER = [
     "temperature_c",
     "gpu_temperature_c",
     "npu_percent",
+    "cpu_freq_mhz",
 ]
 
 
@@ -241,6 +242,7 @@ def _append_metrics_to_csv(data: dict) -> None:
                 data["cpu"]["temperature_c"],
                 data["gpu"]["temperature_c"],
                 data["npu"]["percent"],
+                data["cpu"]["freq_mhz"],
             ])
     except OSError:
         logger.exception("Failed to write metrics to CSV log '%s'", file_path)
@@ -297,6 +299,8 @@ def _maintain_csv_log() -> None:
                     "gpu_temp_count": 0,
                     "npu_sum": 0.0,
                     "npu_count": 0,
+                    "freq_sum": 0.0,
+                    "freq_count": 0,
                 }
             b = buckets[bucket]
             b["count"] += 1
@@ -314,6 +318,10 @@ def _maintain_csv_log() -> None:
             if npu_raw not in ("", "None", None):
                 b["npu_sum"] += float(npu_raw)
                 b["npu_count"] += 1
+            freq_raw = row.get("cpu_freq_mhz", "")
+            if freq_raw not in ("", "None", None):
+                b["freq_sum"] += float(freq_raw)
+                b["freq_count"] += 1
 
         resampled_rows = []
         for bucket_ts in sorted(buckets.keys()):
@@ -339,6 +347,11 @@ def _maintain_csv_log() -> None:
                 "npu_percent": (
                     round(b["npu_sum"] / b["npu_count"], 2)
                     if b["npu_count"]
+                    else ""
+                ),
+                "cpu_freq_mhz": (
+                    round(b["freq_sum"] / b["freq_count"], 2)
+                    if b["freq_count"]
                     else ""
                 ),
             })
@@ -534,6 +547,7 @@ def api_history():
                     "temperature_c": _float_or_none(row.get("temperature_c")),
                     "gpu_temperature_c": _float_or_none(row.get("gpu_temperature_c")),
                     "npu_percent": _float_or_none(row.get("npu_percent")),
+                    "cpu_freq_mhz": _float_or_none(row.get("cpu_freq_mhz")),
                 })
     except OSError:
         logger.exception("Failed to read history from CSV log '%s'", METRICS_LOG_FILE)

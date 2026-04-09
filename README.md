@@ -21,17 +21,17 @@ docker compose -f docker-compose.yml up -d --remove-orphans
 
 ## Screenshot
 
-![RK3566 System Monitor Dashboard](https://github.com/user-attachments/assets/42fe7b4c-d0c5-43a5-9a27-83002a3fc38e)
+![RK3566 System Monitor Dashboard](https://github.com/user-attachments/assets/b6971e43-7ed4-40a9-81fb-b02f02ac9b40)
 
 ## Features
 
 - **Real-time metrics** via Socket.IO WebSocket (configurable refresh rate, default 10 s)
 - **REST API** fallback with polling support
-- **Charts**: donut gauges for CPU / memory / NPU, line charts for CPU and GPU temperature history, combined history chart
+- **Charts**: donut gauges for CPU / memory / NPU, line charts for CPU and GPU temperature, CPU frequency history, combined history chart
 - **NPU monitoring**: real-time Neural Processing Unit utilisation via the `rknpu2` kernel driver
 - **System info**: pod/container name, node hostname, hardware model, uptime, CPU frequency
 - **CSV export**: one-click download of a full metrics snapshot as a `.csv` file
-- **Local metrics log**: graph values (CPU%, memory%, temperature, NPU%) are automatically appended to a local CSV file at each poll interval, with automatic pruning and resampling
+- **Local metrics log**: graph values (CPU%, memory%, temperature, NPU%, CPU freq) are automatically appended to a local CSV file at each poll interval, with automatic pruning and resampling
 - **Prometheus metrics**: a `/metrics` endpoint exposes all system metrics in Prometheus text format for scraping by Prometheus, Grafana, or any OpenMetrics-compatible tool
 - **Fully containerised** with Docker and Docker Compose
 - **Responsive** dark-themed UI – works on desktop and mobile
@@ -128,6 +128,7 @@ In addition to the on-demand CSV export, the monitor **automatically appends** t
 | `temperature_c`     | °C    | CPU temperature (null if N/A)     |
 | `gpu_temperature_c` | °C    | GPU temperature (null if N/A)     |
 | `npu_percent`       | %     | NPU utilisation (null if N/A)     |
+| `cpu_freq_mhz`      | MHz   | CPU frequency (null if N/A)       |
 
 The file path is controlled by the `METRICS_LOG_FILE` environment variable (default `metrics_log.csv`).  
 When running via Docker Compose it is automatically written to `/data/metrics_log.csv` inside the container, which is bind-mounted to `./data/metrics_log.csv` on the host so the log **persists across container restarts**.
@@ -142,9 +143,9 @@ Once per hour the server runs a maintenance pass on the CSV log:
 Example log snippet:
 
 ```
-timestamp,datetime,cpu_percent,memory_percent,temperature_c,gpu_temperature_c,npu_percent
-1714000000,2024-04-25 10:06:40,12.3,45.1,52.0,48.0,0.0
-1714000002,2024-04-25 10:06:42,14.7,45.2,52.1,48.1,0.0
+timestamp,datetime,cpu_percent,memory_percent,temperature_c,gpu_temperature_c,npu_percent,cpu_freq_mhz
+1714000000,2024-04-25 10:06:40,12.3,45.1,52.0,48.0,0.0,1800.0
+1714000002,2024-04-25 10:06:42,14.7,45.2,52.1,48.1,0.0,1416.0
 ```
 
 ## API Endpoints
