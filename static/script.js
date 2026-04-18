@@ -36,7 +36,6 @@ const elHwModel    = $("hw-model");
 const elUptime     = $("uptime");
 const elCpuCount   = $("cpu-count");
 const elCpuFreq    = $("cpu-freq");
-const elCpuFreqCard = $("cpu-freq-card");
 const elCpuGovernor = $("cpu-governor");
 const elCpuPct     = $("cpu-percent");
 const elMemPct     = $("mem-percent");
@@ -185,55 +184,12 @@ function makeTempLine(id) {
   });
 }
 
-// CPU frequency line chart (range 0–2000 MHz)
-function makeFreqLine(id) {
-  return new Chart($(id), {
-    type: "line",
-    data: {
-      labels: [],
-      datasets: [{
-        label: "Freq (MHz)",
-        data: [],
-        borderColor: "#e3b341",
-        backgroundColor: "#e3b34122",
-        borderWidth: 2,
-        pointRadius: 0,
-        fill: true,
-        tension: 0.3,
-      }],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      scales: {
-        x: { display: false },
-        y: {
-          min: 0,
-          max: 2000,
-          ticks: { callback: v => v + " MHz" },
-          grid: { color: "#21262d" },
-        },
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: ctx => ` ${ctx.parsed.y.toFixed(0)} MHz`,
-          },
-        },
-      },
-    },
-  });
-}
-
 // ── Instantiate charts ────────────────────────────────────────────────────
 const cpuDonut   = makeDonut("cpuChart",  "CPU",  "#58a6ff");
 const memDonut   = makeDonut("memChart",  "Mem",  "#3fb950");
 const npuDonut   = makeDonut("npuChart",  "NPU",  "#bc8cff");
 const tempLine      = makeTempLine("tempChart");
 const gpuTempLine   = makeTempLine("gpuTempChart");
-const freqLine      = makeFreqLine("freqChart");
 const histChart  = new Chart($("historyChart"), {
   type: "line",
   data: {
@@ -435,16 +391,6 @@ function pushGpuTempHistory(ts, tempVal) {
   gpuTempLine.update("none");
 }
 
-function pushFreqHistory(ts, freqVal) {
-  freqLine.data.labels.push(new Date(ts * 1000).toLocaleTimeString());
-  freqLine.data.datasets[0].data.push(freqVal);
-  if (freqLine.data.labels.length > MAX_HISTORY_LEN) {
-    freqLine.data.labels.shift();
-    freqLine.data.datasets[0].data.shift();
-  }
-  freqLine.update("none");
-}
-
 // ── Render metrics ────────────────────────────────────────────────────────
 function render(data) {
   const { cpu, memory, disk, npu, gpu, system, timestamp } = data;
@@ -484,14 +430,6 @@ function render(data) {
     pushGpuTempHistory(timestamp, gpu.temperature_c);
   } else {
     elGpuTemp.textContent = "N/A";
-  }
-
-  // CPU Frequency card
-  if (cpu.freq_mhz != null) {
-    elCpuFreqCard.textContent = cpu.freq_mhz + " MHz";
-    pushFreqHistory(timestamp, cpu.freq_mhz);
-  } else {
-    elCpuFreqCard.textContent = "N/A";
   }
 
   // NPU
@@ -624,10 +562,6 @@ async function loadHistory() {
         gpuTempLine.data.labels.push(new Date(tsMs).toLocaleTimeString());
         gpuTempLine.data.datasets[0].data.push(row.gpu_temperature_c);
       }
-      if (row.cpu_freq_mhz != null) {
-        freqLine.data.labels.push(new Date(tsMs).toLocaleTimeString());
-        freqLine.data.datasets[0].data.push(row.cpu_freq_mhz);
-      }
     });
 
     // Trim to max allowed length
@@ -646,15 +580,10 @@ async function loadHistory() {
       gpuTempLine.data.labels.shift();
       gpuTempLine.data.datasets[0].data.shift();
     }
-    while (freqLine.data.labels.length > MAX_HISTORY_LEN) {
-      freqLine.data.labels.shift();
-      freqLine.data.datasets[0].data.shift();
-    }
 
     updateHistChart();
     tempLine.update("none");
     gpuTempLine.update("none");
-    freqLine.update("none");
   } catch (err) {
     console.warn("Failed to load history:", err);
   }
