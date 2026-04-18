@@ -11,7 +11,6 @@ services:
     #env_file:
       #- .env
     environment:
-    environment:
       # Path for the local CSV log file that records graph values.
       # When running via Docker Compose the recommended path is /data/metrics_log.csv
       # so that the file is written to the mounted ./data volume.
