@@ -5,7 +5,7 @@ import logging
 import re
 import time
 import psutil
-from flask import Flask, jsonify, render_template, Response
+from flask import Flask, jsonify, render_template, Response, request
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
 from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
@@ -510,12 +510,24 @@ def api_log_size():
 
 @app.route("/api/history")
 def api_history():
-    """Return all in-retention metrics from the local CSV log as JSON.
+    """Return history metrics from the local CSV log as JSON.
 
-    Each element in the ``history`` list contains the fields stored in the
-    CSV (timestamp, cpu_percent, memory_percent, temperature_c, npu_percent).
-    Entries outside the configured RETENTION_DAYS window are excluded so the
-    client only receives data it would normally be allowed to display.
+    Query parameters
+    ----------------
+    window : int, optional
+        Seconds of history to return, counted back from now.
+        Defaults to the full retention window (RETENTION_DAYS).
+        Example: ``?window=3600`` returns only the last hour.
+    max_points : int, optional
+        Maximum number of rows in the response (default: 2000).
+        When the matching rows exceed this limit the server evenly
+        down-samples them (pick every N-th row) so that the JSON
+        payload – and the browser's memory footprint – stays bounded
+        regardless of how long the service has been running.
+
+    Without these parameters the old behaviour is preserved, but callers
+    are encouraged to pass both to avoid loading the full CSV into the
+    browser on every page open.
     """
 
     def _float_or_none(val):
@@ -526,11 +538,27 @@ def api_history():
         except ValueError:
             return None
 
+    # ── parse query params ────────────────────────────────────────────────
+    try:
+        window_s = int(request.args.get("window", 0))
+    except (ValueError, TypeError):
+        window_s = 0
+
+    try:
+        max_points = max(1, int(request.args.get("max_points", 2000)))
+    except (ValueError, TypeError):
+        max_points = 2000
+
     result = []
     if not os.path.exists(METRICS_LOG_FILE):
         return jsonify({"history": result})
     try:
-        cutoff = int(time.time()) - RETENTION_DAYS * 86400
+        now              = int(time.time())
+        retention_cutoff = now - RETENTION_DAYS * 86400
+        window_cutoff    = (now - window_s) if window_s > 0 else retention_cutoff
+        # Never return data older than RETENTION_DAYS, even if window is wider
+        cutoff           = max(retention_cutoff, window_cutoff)
+
         with open(METRICS_LOG_FILE, "r", newline="") as fh:
             reader = csv.DictReader(fh)
             for row in reader:
@@ -541,14 +569,22 @@ def api_history():
                 if ts < cutoff:
                     continue
                 result.append({
-                    "timestamp": ts,
-                    "cpu_percent": _float_or_none(row.get("cpu_percent")),
-                    "memory_percent": _float_or_none(row.get("memory_percent")),
-                    "temperature_c": _float_or_none(row.get("temperature_c")),
+                    "timestamp":         ts,
+                    "cpu_percent":       _float_or_none(row.get("cpu_percent")),
+                    "memory_percent":    _float_or_none(row.get("memory_percent")),
+                    "temperature_c":     _float_or_none(row.get("temperature_c")),
                     "gpu_temperature_c": _float_or_none(row.get("gpu_temperature_c")),
-                    "npu_percent": _float_or_none(row.get("npu_percent")),
-                    "cpu_freq_mhz": _float_or_none(row.get("cpu_freq_mhz")),
+                    "npu_percent":       _float_or_none(row.get("npu_percent")),
+                    "cpu_freq_mhz":      _float_or_none(row.get("cpu_freq_mhz")),
                 })
+
+        # ── server-side downsampling ──────────────────────────────────────
+        # If we have more rows than max_points, evenly pick max_points of them
+        # so the JSON response stays small regardless of CSV file size.
+        if len(result) > max_points:
+            step   = len(result) / max_points
+            result = [result[int(i * step)] for i in range(max_points)]
+
     except OSError:
         logger.exception("Failed to read history from CSV log '%s'", METRICS_LOG_FILE)
     return jsonify({"history": result})
