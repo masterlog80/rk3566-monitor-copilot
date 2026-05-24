@@ -1,6 +1,17 @@
 # RK3566 Monitor – Docker image
 FROM python:3.11-slim
 
+LABEL org.opencontainers.image.title="RK3566 System Monitor" \
+      org.opencontainers.image.description="A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based single-board computers" \
+      org.opencontainers.image.source="https://github.com/masterlog80/rk3566-monitor-copilot" \
+      org.opencontainers.image.url="https://github.com/masterlog80/rk3566-monitor-copilot" \
+      org.opencontainers.image.documentation="https://github.com/masterlog80/rk3566-monitor-copilot" \
+      org.opencontainers.image.authors="Lorenzo (via Github Copilot/Claude)" \
+      org.opencontainers.image.vendor="Lorenzo (via Github Copilot/Claude)" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="2.5" \
+      org.opencontainers.image.created="2026-05-24T02:45:00Z"
+
 WORKDIR /app
 
 # Install dependencies first (layer caching)
