@@ -11,8 +11,13 @@ const POLL_INTERVAL_MS = (window.SERVER_CONFIG && window.SERVER_CONFIG.pollInter
   ? window.SERVER_CONFIG.pollIntervalMs
   : 10000;                                // fallback: 10 s
 const RESAMPLE_INTERVAL_MS = 60 * 1000; // server resamples old data to 1-minute buckets
-const MAX_HISTORY_SECONDS = 1209600;    // retain up to 2 weeks of data
-const MAX_HISTORY_LEN = Math.ceil(MAX_HISTORY_SECONDS * 1000 / POLL_INTERVAL_MS);
+// Maximum data points held in every in-memory JS array.
+// A fixed cap prevents unbounded memory growth and keeps Chart.js render
+// time constant regardless of how long the service has been running.
+// 5 000 points × 10 s poll = ~14 h of full-resolution data in RAM, which
+// is more than enough for the live view; older history is fetched on demand
+// from the server when the user switches the timeframe selector.
+const MAX_HISTORY_LEN = 5000;
 
 // ── History window (seconds shown in chart) ───────────────────────────
 let historyWindowSeconds = 60;
@@ -348,19 +353,13 @@ function pushHistory(ts, cpuVal, memVal, npuVal, freqVal) {
   if (history.labels.length > 0) {
     const lastTs = history.labels[history.labels.length - 1];
     maybeInsertGap(lastTs, tsMs);
-    if (history.labels.length > MAX_HISTORY_LEN) {
-      history.labels.shift();
-      history.cpu.shift();
-      history.mem.shift();
-      history.npu.shift();
-      history.freq.shift();
-    }
   }
   history.labels.push(tsMs);
   history.cpu.push(cpuVal);
   history.mem.push(memVal);
   history.npu.push(npuVal != null ? npuVal : null);
   history.freq.push(freqVal != null ? freqVal : null);
+  // Single trim after push (removed redundant pre-push check)
   if (history.labels.length > MAX_HISTORY_LEN) {
     history.labels.shift();
     history.cpu.shift();
@@ -372,7 +371,9 @@ function pushHistory(ts, cpuVal, memVal, npuVal, freqVal) {
 }
 
 function pushTempHistory(ts, tempVal) {
-  tempLine.data.labels.push(new Date(ts * 1000).toLocaleTimeString());
+  // Use numeric ms timestamp as the label – far cheaper than allocating a
+  // unique locale string for every sample, and Chart.js can format it if needed.
+  tempLine.data.labels.push(ts * 1000);
   tempLine.data.datasets[0].data.push(tempVal);
   if (tempLine.data.labels.length > MAX_HISTORY_LEN) {
     tempLine.data.labels.shift();
@@ -382,7 +383,7 @@ function pushTempHistory(ts, tempVal) {
 }
 
 function pushGpuTempHistory(ts, tempVal) {
-  gpuTempLine.data.labels.push(new Date(ts * 1000).toLocaleTimeString());
+  gpuTempLine.data.labels.push(ts * 1000);
   gpuTempLine.data.datasets[0].data.push(tempVal);
   if (gpuTempLine.data.labels.length > MAX_HISTORY_LEN) {
     gpuTempLine.data.labels.shift();
@@ -481,7 +482,15 @@ document.querySelectorAll(".btn-tf[data-seconds]").forEach(btn => {
     document.querySelectorAll(".btn-tf[data-seconds]").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     historyWindowSeconds = parseInt(btn.dataset.seconds, 10);
-    updateHistChart();
+    // Clear in-memory arrays and re-fetch from the server for the new window.
+    // This ensures the correct data range is shown without keeping the entire
+    // history in RAM; the server will downsample if needed.
+    history.labels.length = 0;
+    history.cpu.length    = 0;
+    history.mem.length    = 0;
+    history.npu.length    = 0;
+    history.freq.length   = 0;
+    loadHistory();
     histChart.resetZoom();
   });
 });
@@ -538,7 +547,13 @@ function startPolling() {
 // ── History preload (populate charts from existing CSV log on page open) ──
 async function loadHistory() {
   try {
-    const resp = await fetch("/api/history");
+    // Request only the data that is actually visible at startup, and ask the
+    // server to cap the response at MAX_HISTORY_LEN points via downsampling.
+    // This prevents a multi-megabyte response when the CSV has been accumulating
+    // for days, which was the main source of the slowdown-and-crash behaviour.
+    const resp = await fetch(
+      `/api/history?window=${historyWindowSeconds}&max_points=${MAX_HISTORY_LEN}`
+    );
     if (!resp.ok) return;
     const data = await resp.json();
     const rows = data.history;
@@ -554,32 +569,22 @@ async function loadHistory() {
       history.mem.push(row.memory_percent);
       history.npu.push(row.npu_percent);
       history.freq.push(row.cpu_freq_mhz != null ? row.cpu_freq_mhz : null);
+      // Use numeric ms timestamp as the label (consistent with pushTempHistory)
       if (row.temperature_c != null) {
-        tempLine.data.labels.push(new Date(tsMs).toLocaleTimeString());
+        tempLine.data.labels.push(tsMs);
         tempLine.data.datasets[0].data.push(row.temperature_c);
       }
       if (row.gpu_temperature_c != null) {
-        gpuTempLine.data.labels.push(new Date(tsMs).toLocaleTimeString());
+        gpuTempLine.data.labels.push(tsMs);
         gpuTempLine.data.datasets[0].data.push(row.gpu_temperature_c);
       }
     });
 
-    // Trim to max allowed length
-    while (history.labels.length > MAX_HISTORY_LEN) {
-      history.labels.shift();
-      history.cpu.shift();
-      history.mem.shift();
-      history.npu.shift();
-      history.freq.shift();
-    }
-    while (tempLine.data.labels.length > MAX_HISTORY_LEN) {
-      tempLine.data.labels.shift();
-      tempLine.data.datasets[0].data.shift();
-    }
-    while (gpuTempLine.data.labels.length > MAX_HISTORY_LEN) {
-      gpuTempLine.data.labels.shift();
-      gpuTempLine.data.datasets[0].data.shift();
-    }
+    // Trim (in case the server returned slightly more than MAX_HISTORY_LEN)
+    const trim = arr => { while (arr.length > MAX_HISTORY_LEN) arr.shift(); };
+    [history.labels, history.cpu, history.mem, history.npu, history.freq,
+     tempLine.data.labels, tempLine.data.datasets[0].data,
+     gpuTempLine.data.labels, gpuTempLine.data.datasets[0].data].forEach(trim);
 
     updateHistChart();
     tempLine.update("none");
