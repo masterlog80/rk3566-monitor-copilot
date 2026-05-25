@@ -515,19 +515,26 @@ def api_history():
     Query parameters
     ----------------
     window : int, optional
-        Seconds of history to return, counted back from now.
+        Seconds of history to return, counted back from *now*.
         Defaults to the full retention window (RETENTION_DAYS).
-        Example: ``?window=3600`` returns only the last hour.
+        Example: ``?window=3600`` → last hour.
+    since : int, optional
+        Unix timestamp (seconds).  Return only rows with timestamp >= since.
+        Takes precedence over ``window`` when both are supplied.
+        Used by the client when the user zooms into a specific historical
+        range and needs higher-resolution data for that exact slice.
+    until : int, optional
+        Unix timestamp (seconds).  Return only rows with timestamp <= until.
+        Defaults to *now*.  Combined with ``since`` this allows the client
+        to request an arbitrary past window rather than always "last N s".
     max_points : int, optional
         Maximum number of rows in the response (default: 2000).
         When the matching rows exceed this limit the server evenly
-        down-samples them (pick every N-th row) so that the JSON
-        payload – and the browser's memory footprint – stays bounded
-        regardless of how long the service has been running.
+        down-samples them (pick every N-th row) so that the JSON payload
+        stays bounded regardless of CSV file size.
 
-    Without these parameters the old behaviour is preserved, but callers
-    are encouraged to pass both to avoid loading the full CSV into the
-    browser on every page open.
+    Without these parameters the old behaviour is preserved; callers are
+    encouraged to pass at least ``window`` and ``max_points``.
     """
 
     def _float_or_none(val):
@@ -539,6 +546,19 @@ def api_history():
             return None
 
     # ── parse query params ────────────────────────────────────────────────
+    now = int(time.time())
+    retention_cutoff = now - RETENTION_DAYS * 86400
+
+    try:
+        since_s = int(request.args.get("since", 0))
+    except (ValueError, TypeError):
+        since_s = 0
+
+    try:
+        until_s = int(request.args.get("until", 0))
+    except (ValueError, TypeError):
+        until_s = 0
+
     try:
         window_s = int(request.args.get("window", 0))
     except (ValueError, TypeError):
@@ -549,16 +569,21 @@ def api_history():
     except (ValueError, TypeError):
         max_points = 2000
 
+    # ``since`` overrides ``window``; both are floored by the retention cutoff
+    if since_s > 0:
+        cutoff = max(retention_cutoff, since_s)
+    elif window_s > 0:
+        cutoff = max(retention_cutoff, now - window_s)
+    else:
+        cutoff = retention_cutoff
+
+    # ``until`` defaults to now (open-ended)
+    upper = until_s if until_s > 0 else now
+
     result = []
     if not os.path.exists(METRICS_LOG_FILE):
         return jsonify({"history": result})
     try:
-        now              = int(time.time())
-        retention_cutoff = now - RETENTION_DAYS * 86400
-        window_cutoff    = (now - window_s) if window_s > 0 else retention_cutoff
-        # Never return data older than RETENTION_DAYS, even if window is wider
-        cutoff           = max(retention_cutoff, window_cutoff)
-
         with open(METRICS_LOG_FILE, "r", newline="") as fh:
             reader = csv.DictReader(fh)
             for row in reader:
@@ -566,7 +591,7 @@ def api_history():
                     ts = int(row["timestamp"])
                 except (ValueError, KeyError):
                     continue
-                if ts < cutoff:
+                if ts < cutoff or ts > upper:
                     continue
                 result.append({
                     "timestamp":         ts,
@@ -579,8 +604,7 @@ def api_history():
                 })
 
         # ── server-side downsampling ──────────────────────────────────────
-        # If we have more rows than max_points, evenly pick max_points of them
-        # so the JSON response stays small regardless of CSV file size.
+        # Evenly pick max_points rows so the JSON response stays bounded.
         if len(result) > max_points:
             step   = len(result) / max_points
             result = [result[int(i * step)] for i in range(max_points)]
@@ -588,6 +612,41 @@ def api_history():
     except OSError:
         logger.exception("Failed to read history from CSV log '%s'", METRICS_LOG_FILE)
     return jsonify({"history": result})
+
+
+@app.route("/api/history/bounds")
+def api_history_bounds():
+    """Return the Unix timestamps of the oldest and newest retained data points.
+
+    This is used by the client on startup to know which timeframe-selector
+    buttons make sense to show (e.g. hide the "2 weeks" button if the service
+    has only been running for 3 hours).
+
+    The endpoint scans the CSV once but builds no intermediate list, so it is
+    fast even for large files.
+    """
+    if not os.path.exists(METRICS_LOG_FILE):
+        return jsonify({"oldest": None, "newest": None})
+    try:
+        oldest: int | None = None
+        newest: int | None = None
+        retention_cutoff = int(time.time()) - RETENTION_DAYS * 86400
+        with open(METRICS_LOG_FILE, "r", newline="") as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                try:
+                    ts = int(row["timestamp"])
+                except (ValueError, KeyError):
+                    continue
+                if ts < retention_cutoff:
+                    continue
+                if oldest is None:
+                    oldest = ts
+                newest = ts
+        return jsonify({"oldest": oldest, "newest": newest})
+    except OSError:
+        logger.exception("Failed to read bounds from CSV log '%s'", METRICS_LOG_FILE)
+        return jsonify({"oldest": None, "newest": None})
 
 
 @app.route("/api/metrics")
