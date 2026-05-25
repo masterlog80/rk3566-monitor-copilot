@@ -22,6 +22,16 @@ const MAX_HISTORY_LEN = 5000;
 // ── History window (seconds shown in chart) ───────────────────────────
 let historyWindowSeconds = 60;
 
+// ── Zoom state ───────────────────────────────────────────────────────────
+// When the user zooms/pans into a specific range we fetch higher-resolution
+// data for that exact slice.  While zoomed, live WebSocket updates accumulate
+// in the history[] arrays but do NOT overwrite the zoomed chart view, so the
+// detail the user is inspecting stays stable.  Double-clicking the chart (or
+// clicking a timeframe button) exits zoom mode and restores the live view.
+let isZoomed       = false;
+let _refetchTimer  = null;   // debounce handle for zoom/pan re-fetch
+
+
 // ── State ────────────────────────────────────────────────────────────────
 const history = {
   labels:      [],   // Unix timestamps (ms)
@@ -294,13 +304,17 @@ const histChart  = new Chart($("historyChart"), {
           wheel: { enabled: true },
           pinch: { enabled: true },
           mode: "x",
+          // After zoom completes, re-fetch native-resolution data for the
+          // visible range so the chart drills down to the original poll granularity.
+          onZoomComplete: onZoomOrPanComplete,
         },
         pan: {
           enabled: true,
           mode: "x",
+          onPanComplete: onZoomOrPanComplete,
         },
         limits: {
-          x: { minRange: 10000 },
+          x: { minRange: POLL_INTERVAL_MS * 5 },   // minimum visible span = 5 poll ticks
         },
       },
     },
@@ -338,6 +352,10 @@ function updateDonut(chart, value) {
 }
 
 function updateHistChart() {
+  // While the user is zoomed into a historical range, the chart shows a
+  // high-resolution slice fetched on demand.  Skip the live-data overwrite
+  // so that the zoomed view stays stable between WebSocket ticks.
+  if (isZoomed) return;
   const maxPoints = Math.ceil(historyWindowSeconds * 1000 / POLL_INTERVAL_MS);
   const start = Math.max(0, history.labels.length - maxPoints);
   histChart.data.labels            = history.labels.slice(start);
@@ -346,6 +364,49 @@ function updateHistChart() {
   histChart.data.datasets[2].data  = history.npu.slice(start);
   histChart.data.datasets[3].data  = history.freq.slice(start);
   histChart.update("none");
+}
+
+// ── Zoom-triggered high-resolution re-fetch ──────────────────────────────
+// When the user zooms or pans the history chart we ask the server for the
+// full native-resolution data for exactly the visible time range.  This
+// turns the Chart.js zoom plugin into a true "drill-down" rather than just
+// a viewport onto the already-loaded (possibly resampled) points.
+async function refetchVisibleRange() {
+  const xScale = histChart.scales.x;
+  if (!xScale) return;
+  const sinceS = Math.floor(xScale.min / 1000);
+  const untilS = Math.ceil(xScale.max  / 1000);
+  try {
+    const resp = await fetch(
+      `/api/history?since=${sinceS}&until=${untilS}&max_points=${MAX_HISTORY_LEN}`
+    );
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const rows = data.history;
+    if (!Array.isArray(rows) || rows.length === 0) return;
+    // Replace chart data directly – do NOT touch the history[] live buffer.
+    histChart.data.labels            = rows.map(r => r.timestamp * 1000);
+    histChart.data.datasets[0].data  = rows.map(r => r.cpu_percent);
+    histChart.data.datasets[1].data  = rows.map(r => r.memory_percent);
+    histChart.data.datasets[2].data  = rows.map(r => r.npu_percent);
+    histChart.data.datasets[3].data  = rows.map(r => r.cpu_freq_mhz);
+    histChart.update("none");
+  } catch (err) {
+    console.warn("Zoom refetch failed:", err);
+  }
+}
+
+function onZoomOrPanComplete() {
+  isZoomed = true;
+  if (_refetchTimer) clearTimeout(_refetchTimer);
+  // Debounce: wait until the user finishes zooming/panning before fetching
+  _refetchTimer = setTimeout(refetchVisibleRange, 300);
+}
+
+function exitZoom() {
+  isZoomed = false;
+  histChart.resetZoom();
+  updateHistChart();
 }
 
 function pushHistory(ts, cpuVal, memVal, npuVal, freqVal) {
@@ -476,15 +537,39 @@ function render(data) {
   elLastUpdate.textContent = "Last update: " + new Date(timestamp * 1000).toLocaleTimeString();
 }
 
+// ── Timeframe button visibility ──────────────────────────────────────────
+// Hide timeframe buttons for windows larger than the available data.
+// Called once at startup after the history bounds are known.
+function updateTimeframeButtons(oldestTs) {
+  if (!oldestTs) return;
+  const availableSeconds = Math.floor(Date.now() / 1000) - oldestTs;
+  document.querySelectorAll(".btn-tf[data-seconds]").forEach(btn => {
+    const btnSeconds = parseInt(btn.dataset.seconds, 10);
+    // Keep buttons that cover at most 110 % of available data (small margin
+    // so the "current" window button is never hidden by clock drift).
+    if (btnSeconds > availableSeconds * 1.1) {
+      btn.style.display = "none";
+      // If the active window just became unavailable, fall back to 1 min
+      if (btn.classList.contains("active")) {
+        btn.classList.remove("active");
+        historyWindowSeconds = 60;
+        document.querySelector('.btn-tf[data-seconds="60"]').classList.add("active");
+      }
+    } else {
+      btn.style.display = "";
+    }
+  });
+}
+
 // ── Timeframe selector ────────────────────────────────────────────────────
 document.querySelectorAll(".btn-tf[data-seconds]").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".btn-tf[data-seconds]").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     historyWindowSeconds = parseInt(btn.dataset.seconds, 10);
-    // Clear in-memory arrays and re-fetch from the server for the new window.
-    // This ensures the correct data range is shown without keeping the entire
-    // history in RAM; the server will downsample if needed.
+    // Exit zoom mode and clear arrays so loadHistory fetches the right window.
+    isZoomed = false;
+    if (_refetchTimer) clearTimeout(_refetchTimer);
     history.labels.length = 0;
     history.cpu.length    = 0;
     history.mem.length    = 0;
@@ -495,8 +580,8 @@ document.querySelectorAll(".btn-tf[data-seconds]").forEach(btn => {
   });
 });
 
-// Reset zoom on double-click on chart
-$("historyChart").addEventListener("dblclick", () => histChart.resetZoom());
+// Double-click exits zoom mode and restores the live timeframe view
+$("historyChart").addEventListener("dblclick", exitZoom);
 
 // ── WebSocket connection ──────────────────────────────────────────────────
 function connectWebSocket() {
@@ -605,16 +690,28 @@ async function refreshLogSize() {
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────
-(function init() {
-  // Pre-populate charts from the existing CSV log before live data arrives
-  loadHistory();
-  // Try WebSocket first; if socket.io is unavailable fall back to polling
+(async function init() {
+  // 1. Fetch the available data bounds first so we can hide irrelevant
+  //    timeframe buttons before any chart data arrives.
+  try {
+    const boundsResp = await fetch("/api/history/bounds");
+    if (boundsResp.ok) {
+      const bounds = await boundsResp.json();
+      if (bounds.oldest) updateTimeframeButtons(bounds.oldest);
+    }
+  } catch (_) { /* non-fatal – buttons remain fully visible */ }
+
+  // 2. Pre-populate charts from the existing CSV log before live data arrives
+  await loadHistory();
+
+  // 3. Try WebSocket first; if socket.io is unavailable fall back to polling
   if (typeof io !== "undefined") {
     connectWebSocket();
   } else {
     startPolling();
   }
-  // Refresh log file size once per minute
+
+  // 4. Refresh log file size once per minute
   refreshLogSize();
   setInterval(refreshLogSize, 60000);
 })();
