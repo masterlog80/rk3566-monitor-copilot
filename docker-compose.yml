@@ -19,6 +19,10 @@ services:
       - PORT=5000
       - SECRET_KEY=change-me-in-production
       - FLASK_ENV=production
+      # Image identity – injected so the dashboard footer can display the
+      # exact image name and version the container was started from.
+      - IMAGE_NAME=rk3566-monitor-copilot
+      - IMAGE_VERSION=2.5
       - LOG_LEVEL=INFO
       # How often (in seconds) metrics are collected and broadcast to clients.
       - POLL_INTERVAL_SECONDS=5 
