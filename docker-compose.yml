@@ -19,10 +19,6 @@ services:
       - PORT=5000
       - SECRET_KEY=change-me-in-production
       - FLASK_ENV=production
-      # Image identity – injected so the dashboard footer can display the
-      # exact image name and version the container was started from.
-      - IMAGE_NAME=rk3566-monitor-copilot
-      - IMAGE_VERSION=2.5
       - LOG_LEVEL=INFO
       # How often (in seconds) metrics are collected and broadcast to clients.
       - POLL_INTERVAL_SECONDS=5 
@@ -34,6 +30,7 @@ services:
       #- NPU_LOAD_PATH=/sys/kernel/debug/rknpu/load
       #- DISK2_MOUNTPOINT=/dev/zram1
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # read-only: used to auto-detect image name and version
       - /proc:/proc:ro
       - /sys:/sys:ro
       - /etc/hostname:/etc/hostname:ro
