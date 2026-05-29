@@ -1,0 +1,234 @@
+# =============================================================================
+# RK3566 Monitor – k3s / Kubernetes deployment
+# =============================================================================
+#
+# RBAC note
+# ---------
+# The application queries the Kubernetes API at startup to auto-detect its own
+# image name and version (displayed in the dashboard footer).  This requires a
+# Role that grants "get" on "pods" bound to the pod's ServiceAccount.
+# All resources below are scoped to the same namespace (default: monitoring).
+#
+# Usage:
+#   kubectl apply -f k3s-deploy.yaml
+#   kubectl apply -f k3s-deploy.yaml -n <your-namespace>   # with custom NS
+#
+# After deploying, update IMAGE_TAG below whenever you build a new image.
+# =============================================================================
+
+---
+# ── Namespace (optional – remove if you deploy to an existing namespace) ──
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+
+---
+# ── ServiceAccount ────────────────────────────────────────────────────────
+# A dedicated SA keeps permissions minimal and auditable.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rk3566-monitor
+  namespace: monitoring
+
+---
+# ── Role: allow the pod to read its own Pod object ───────────────────────
+# This is the only permission needed.  The app reads:
+#   status.containerStatuses[0].image  →  image name + tag
+# from the pod's own JSON so it can display "Image: name:tag" in the footer.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rk3566-monitor-pod-reader
+  namespace: monitoring
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get"]
+
+---
+# ── RoleBinding: bind the Role to the ServiceAccount ─────────────────────
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rk3566-monitor-pod-reader
+  namespace: monitoring
+subjects:
+  - kind: ServiceAccount
+    name: rk3566-monitor
+    namespace: monitoring
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: rk3566-monitor-pod-reader
+
+---
+# ── PersistentVolumeClaim: metrics CSV log ────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rk3566-monitor-data
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi
+  # Remove storageClassName to use the k3s default (local-path)
+  # storageClassName: local-path
+
+---
+# ── Deployment ────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rk3566-monitor
+  namespace: monitoring
+  labels:
+    app: rk3566-monitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rk3566-monitor
+  template:
+    metadata:
+      labels:
+        app: rk3566-monitor
+    spec:
+      serviceAccountName: rk3566-monitor   # ← binds the pod-reader Role above
+      hostPID: true                         # needed for /proc metrics
+      hostNetwork: false
+
+      # Give the container access to host /proc and /sys for system metrics
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: sys
+          hostPath:
+            path: /sys
+        - name: hostname
+          hostPath:
+            path: /etc/hostname
+        - name: data
+          persistentVolumeClaim:
+            claimName: rk3566-monitor-data
+
+      containers:
+        - name: monitor
+          # ── Update this tag when you build a new image ──────────────
+          image: rk3566-monitor-copilot:2.5
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - containerPort: 5000
+              name: http
+
+          env:
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "5000"
+            - name: FLASK_ENV
+              value: "production"
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: SECRET_KEY
+              value: "change-me-in-production"   # use a Secret in production
+            - name: METRICS_LOG_FILE
+              value: "/data/metrics_log.csv"
+            - name: POLL_INTERVAL_SECONDS
+              value: "5"
+            - name: RETENTION_DAYS
+              value: "14"
+            - name: RESAMPLE_AFTER_HOURS
+              value: "48"
+            # IMAGE_NAME and IMAGE_VERSION are NOT set here:
+            # the app auto-detects them from the Kubernetes API at startup
+            # using the ServiceAccount token mounted automatically above.
+            # You can still set them here to override the auto-detection,
+            # e.g. if RBAC is not available in your cluster:
+            #   - name: IMAGE_NAME
+            #     value: "rk3566-monitor-copilot"
+            #   - name: IMAGE_VERSION
+            #     value: "2.5"
+
+          volumeMounts:
+            - name: proc
+              mountPath: /proc
+              readOnly: true
+            - name: sys
+              mountPath: /sys
+              readOnly: true
+            - name: hostname
+              mountPath: /etc/hostname
+              readOnly: true
+            - name: data
+              mountPath: /data
+
+          securityContext:
+            privileged: true              # required to read /proc and /sys
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+---
+# ── Service ───────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: rk3566-monitor
+  namespace: monitoring
+spec:
+  selector:
+    app: rk3566-monitor
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5000
+  type: ClusterIP
+
+---
+# ── Ingress (optional – requires an ingress controller in k3s, e.g. Traefik)
+# Uncomment and set host: to your actual hostname.
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: rk3566-monitor
+#   namespace: monitoring
+#   annotations:
+#     traefik.ingress.kubernetes.io/router.entrypoints: web
+# spec:
+#   rules:
+#     - host: monitor.example.com
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: rk3566-monitor
+#                 port:
+#                   number: 80
