@@ -475,12 +475,13 @@ function render(data) {
   // Last update
   elLastUpdate.textContent = "Last update: " + new Date(timestamp * 1000).toLocaleTimeString();
 
-  // Populate image version once (idempotent – same value every tick)
+  // Populate image name + version once (idempotent – same value every tick)
   const elImgVer = document.getElementById("image-version");
   if (elImgVer && !elImgVer.dataset.set) {
-    const ver = (window.SERVER_CONFIG && window.SERVER_CONFIG.imageVersion)
-      ? window.SERVER_CONFIG.imageVersion : "?";
-    elImgVer.textContent = "Image version: " + ver;
+    const cfg  = window.SERVER_CONFIG || {};
+    const name = cfg.imageName    || "rk3566-monitor-copilot";
+    const ver  = cfg.imageVersion || "?";
+    elImgVer.textContent = "Image: " + name + ":" + ver;
     elImgVer.dataset.set = "1";
   }
 }
