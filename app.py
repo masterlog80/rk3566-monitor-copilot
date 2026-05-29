@@ -30,8 +30,10 @@ RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", 14))
 RESAMPLE_AFTER_HOURS = int(os.getenv("RESAMPLE_AFTER_HOURS", 24))
 NPU_LOAD_PATH = os.getenv("NPU_LOAD_PATH", "/sys/kernel/debug/rknpu/load")
 DISK2_MOUNTPOINT = os.getenv("DISK2_MOUNTPOINT", "").strip()
-# Image version – set via the IMAGE_VERSION env var (injected by Docker/compose),
-# or falls back to the OCI label value baked into the Dockerfile.
+# Image name and version – set via env vars injected by Docker / Compose.
+# IMAGE_NAME  defaults to the docker-compose service image name.
+# IMAGE_VERSION defaults to the OCI label value baked into the Dockerfile.
+IMAGE_NAME    = os.getenv("IMAGE_NAME",    "rk3566-monitor-copilot")
 IMAGE_VERSION = os.getenv("IMAGE_VERSION", "2.5")
 
 
@@ -503,6 +505,7 @@ def index():
         retention_days=RETENTION_DAYS,
         resample_after_hours=RESAMPLE_AFTER_HOURS,
         log_file_size_kb=_get_log_file_size_kb(),
+        image_name=IMAGE_NAME,
         image_version=IMAGE_VERSION,
     )
 
