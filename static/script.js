@@ -474,6 +474,15 @@ function render(data) {
 
   // Last update
   elLastUpdate.textContent = "Last update: " + new Date(timestamp * 1000).toLocaleTimeString();
+
+  // Populate image version once (idempotent – same value every tick)
+  const elImgVer = document.getElementById("image-version");
+  if (elImgVer && !elImgVer.dataset.set) {
+    const ver = (window.SERVER_CONFIG && window.SERVER_CONFIG.imageVersion)
+      ? window.SERVER_CONFIG.imageVersion : "?";
+    elImgVer.textContent = "Image version: " + ver;
+    elImgVer.dataset.set = "1";
+  }
 }
 
 // ── Timeframe selector ────────────────────────────────────────────────────
@@ -602,6 +611,67 @@ async function refreshLogSize() {
     const data = await resp.json();
     if (elLogSize) elLogSize.textContent = data.size_kb + " KB";
   } catch (_) { /* silent */ }
+}
+
+// ── Reset Log ────────────────────────────────────────────────────────────────
+// Called by the "Reset Log" button in the UI.
+// Asks for confirmation, deletes the log via the REST API, then clears all
+// in-memory arrays and resets every chart to an empty state.
+async function confirmResetLog() {
+  if (!confirm(
+    "Delete the metrics log file and reset all graphs?\n" +
+    "Data collection will resume automatically on the next poll."
+  )) return;
+
+  try {
+    const resp = await fetch("/api/log", { method: "DELETE" });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      alert("Reset failed: " + (body.message || resp.statusText));
+      return;
+    }
+  } catch (err) {
+    alert("Reset failed: " + err);
+    return;
+  }
+
+  // ── Clear every in-memory history buffer ─────────────────────────────
+  history.labels.length = 0;
+  history.cpu.length    = 0;
+  history.mem.length    = 0;
+  history.npu.length    = 0;
+  history.freq.length   = 0;
+
+  // ── Reset all charts to empty ──────────────────────────────────────────
+  [histChart, cpuChart, memChart, npuChart].forEach(ch => {
+    ch.data.labels = [];
+    ch.data.datasets.forEach(ds => { ds.data = []; });
+    ch.update("none");
+  });
+
+  tempLine.data.labels = [];
+  tempLine.data.datasets[0].data = [];
+  tempLine.update("none");
+
+  gpuTempLine.data.labels = [];
+  gpuTempLine.data.datasets[0].data = [];
+  gpuTempLine.update("none");
+
+  // ── Reset "last update" footer ────────────────────────────────────────
+  const elLU = document.getElementById("last-update");
+  if (elLU) elLU.textContent = "–";
+
+  // ── Reset log size indicator ──────────────────────────────────────────
+  refreshLogSize();
+
+  // ── Re-run bounds check so timeframe buttons update immediately ───────
+  try {
+    const boundsResp = await fetch("/api/history/bounds");
+    if (boundsResp.ok) {
+      const bounds = await boundsResp.json();
+      updateTimeframeButtons(bounds.oldest || null);
+    }
+  } catch (_) { /* non-fatal */ }
 }
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────
