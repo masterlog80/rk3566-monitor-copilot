@@ -30,6 +30,9 @@ RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", 14))
 RESAMPLE_AFTER_HOURS = int(os.getenv("RESAMPLE_AFTER_HOURS", 24))
 NPU_LOAD_PATH = os.getenv("NPU_LOAD_PATH", "/sys/kernel/debug/rknpu/load")
 DISK2_MOUNTPOINT = os.getenv("DISK2_MOUNTPOINT", "").strip()
+# Image version – set via the IMAGE_VERSION env var (injected by Docker/compose),
+# or falls back to the OCI label value baked into the Dockerfile.
+IMAGE_VERSION = os.getenv("IMAGE_VERSION", "2.5")
 
 
 # ---------------------------------------------------------------------------
@@ -500,12 +503,32 @@ def index():
         retention_days=RETENTION_DAYS,
         resample_after_hours=RESAMPLE_AFTER_HOURS,
         log_file_size_kb=_get_log_file_size_kb(),
+        image_version=IMAGE_VERSION,
     )
 
 
 @app.route("/api/log/size")
 def api_log_size():
     return jsonify({"size_kb": _get_log_file_size_kb()})
+
+
+@app.route("/api/log", methods=["DELETE"])
+def api_log_delete():
+    """Delete the metrics CSV log file and reset collected data.
+
+    Called when the user clicks "Reset Log" in the dashboard.
+    After deletion the metrics background thread will re-create the file
+    on the next poll cycle, so data collection resumes automatically.
+    Returns 200 on success or 500 if deletion fails.
+    """
+    try:
+        if os.path.exists(METRICS_LOG_FILE):
+            os.remove(METRICS_LOG_FILE)
+            logger.info("Metrics log '%s' deleted via API", METRICS_LOG_FILE)
+        return jsonify({"status": "ok", "message": "Log deleted"})
+    except OSError as exc:
+        logger.exception("Failed to delete metrics log '%s'", METRICS_LOG_FILE)
+        return jsonify({"status": "error", "message": str(exc)}), 500
 
 
 @app.route("/api/history")
