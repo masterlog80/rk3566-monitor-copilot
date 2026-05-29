@@ -5,6 +5,7 @@ import json
 import os
 import logging
 import re
+import ssl
 import time
 import psutil
 from flask import Flask, jsonify, render_template, Response, request
@@ -35,74 +36,133 @@ DISK2_MOUNTPOINT = os.getenv("DISK2_MOUNTPOINT", "").strip()
 def _detect_image_info() -> tuple[str, str]:
     """Auto-detect the running container's image name and version.
 
-    Strategy
-    --------
-    1. Read this process's container ID from ``/proc/self/cgroup``.
-    2. Call the Docker daemon via the Unix socket
-       ``GET /containers/<id>/json`` — no extra dependencies needed.
-    3. Extract ``Config.Image`` (full image reference) and the OCI label
-       ``org.opencontainers.image.version`` from the response.
-    4. On any failure fall back to the IMAGE_NAME / IMAGE_VERSION env vars,
-       then to hardcoded defaults, so the app always starts cleanly even when
-       the Docker socket is not mounted (e.g. bare-metal or CI runs).
+    Tries two strategies in order so the same image works in every deployment
+    environment without any manual configuration:
+
+    1. **Docker socket** – for docker-compose / bare-metal Docker.
+       Reads the container ID from ``/proc/self/cgroup``, then calls
+       ``GET /containers/<id>/json`` over ``/var/run/docker.sock`` (stdlib
+       only, no extra packages).  Extracts ``Config.Image`` and the OCI
+       label ``org.opencontainers.image.version``.
+
+    2. **Kubernetes API** – for k3s / k8s (containerd, no Docker socket).
+       Every pod has a service-account token at
+       ``/var/run/secrets/kubernetes.io/serviceaccount/`` and ``$HOSTNAME``
+       set to the pod name automatically.  Queries
+       ``GET /api/v1/namespaces/{ns}/pods/{name}`` and reads the image from
+       ``status.containerStatuses``.  Requires a ``Role`` granting ``get``
+       on ``pods`` — see ``k3s-deploy.yaml`` in the repo root.
+
+    3. **Environment variables** ``IMAGE_NAME`` / ``IMAGE_VERSION`` –
+       explicit override, useful in CI or when neither socket is available.
+
+    4. **Hardcoded defaults** – last resort so the app always starts.
     """
     _fallback_name    = os.getenv("IMAGE_NAME",    "rk3566-monitor-copilot")
     _fallback_version = os.getenv("IMAGE_VERSION", "2.5")
-    try:
-        # ── Step 1: read container ID from cgroup ──────────────────────
-        container_id: str | None = None
-        with open("/proc/self/cgroup", "r") as fh:
-            for line in fh:
-                line = line.strip()
-                # Traditional cgroup v1:  12:memory:/docker/<full-id>
-                # cgroup v2 systemd scope: 0::/system.slice/docker-<full-id>.scope
-                parts = line.split("/")
-                for i, part in enumerate(parts):
-                    if part == "docker" and i + 1 < len(parts):
-                        candidate = parts[i + 1]
-                        if len(candidate) >= 12:
-                            container_id = candidate[:64]
+
+    # ── Strategy 1: Docker socket ───────────────────────────────────────────
+    def _try_docker() -> tuple[str, str] | None:
+        try:
+            container_id: str | None = None
+            with open("/proc/self/cgroup", "r") as fh:
+                for line in fh:
+                    parts = line.strip().split("/")
+                    for i, part in enumerate(parts):
+                        if part == "docker" and i + 1 < len(parts):
+                            candidate = parts[i + 1]
+                            if len(candidate) >= 12:
+                                container_id = candidate[:64]
+                                break
+                        if part.startswith("docker-") and part.endswith(".scope"):
+                            container_id = part[len("docker-"):-len(".scope")]
                             break
-                    if part.startswith("docker-") and part.endswith(".scope"):
-                        container_id = part[len("docker-"):-len(".scope")]
+                    if container_id:
                         break
-                if container_id:
-                    break
+            if not container_id:
+                return None
+            conn = http.client.UnixHTTPConnection("/var/run/docker.sock")
+            conn.request("GET", f"/containers/{container_id}/json",
+                         headers={"Host": "localhost"})
+            resp = conn.getresponse()
+            if resp.status != 200:
+                return None
+            data   = json.loads(resp.read().decode())
+            conn.close()
+            raw    = data.get("Config", {}).get("Image", "") or ""
+            labels = data.get("Config", {}).get("Labels", {}) or {}
+            name   = raw.split(":")[0] if raw else None
+            ver    = (labels.get("org.opencontainers.image.version")
+                      or (raw.split(":")[-1] if ":" in raw else None))
+            if name:
+                logger.info("Image info via Docker socket: %s:%s", name, ver)
+                return name, ver or _fallback_version
+        except Exception:
+            pass
+        return None
 
-        if not container_id:
-            logger.debug("Could not determine container ID; using fallback image info")
-            return _fallback_name, _fallback_version
+    # ── Strategy 2: Kubernetes API ──────────────────────────────────────────
+    def _try_kubernetes() -> tuple[str, str] | None:
+        try:
+            sa = "/var/run/secrets/kubernetes.io/serviceaccount"
+            token_path = os.path.join(sa, "token")
+            ns_path    = os.path.join(sa, "namespace")
+            ca_path    = os.path.join(sa, "ca.crt")
+            if not os.path.exists(token_path):
+                return None                         # not running in k8s/k3s
+            with open(token_path) as fh: token = fh.read().strip()
+            with open(ns_path)    as fh: ns    = fh.read().strip()
+            # Kubernetes automatically sets $HOSTNAME to the pod name
+            pod_name = os.environ.get("HOSTNAME", "")
+            if not pod_name:
+                return None
+            k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST",
+                                      "kubernetes.default.svc")
+            k8s_port = int(os.environ.get("KUBERNETES_SERVICE_PORT", "443"))
+            ctx  = ssl.create_default_context(cafile=ca_path)
+            conn = http.client.HTTPSConnection(k8s_host, k8s_port, context=ctx)
+            conn.request(
+                "GET",
+                f"/api/v1/namespaces/{ns}/pods/{pod_name}",
+                headers={"Authorization": f"Bearer {token}",
+                         "Accept": "application/json"},
+            )
+            resp = conn.getresponse()
+            if resp.status == 403:
+                logger.warning(
+                    "k8s API returned 403 for pod %s/%s – bind a Role granting "
+                    "'get' on 'pods' to the pod's ServiceAccount "
+                    "(see k3s-deploy.yaml in the repo root).",
+                    ns, pod_name,
+                )
+                return None
+            if resp.status != 200:
+                return None
+            pod  = json.loads(resp.read().decode())
+            conn.close()
+            # status.containerStatuses has the resolved tag; fall back to spec
+            statuses = pod.get("status", {}).get("containerStatuses", [])
+            specs    = pod.get("spec",   {}).get("containers", [])
+            raw = (statuses[0].get("image", "") if statuses
+                   else specs[0].get("image", "") if specs else "")
+            if not raw:
+                return None
+            # Strip registry prefix e.g. "docker.io/library/" → "name:tag"
+            short = raw.split("/")[-1]
+            name  = short.split(":")[0]
+            ver   = short.split(":")[-1] if ":" in short else _fallback_version
+            logger.info("Image info via Kubernetes API: %s:%s (pod %s/%s)",
+                        name, ver, ns, pod_name)
+            return name or None, ver or _fallback_version
+        except Exception:
+            pass
+        return None
 
-        # ── Step 2: query Docker socket ────────────────────────────────
-        conn = http.client.UnixHTTPConnection("/var/run/docker.sock")
-        conn.request("GET", f"/containers/{container_id}/json",
-                     headers={"Host": "localhost"})
-        resp = conn.getresponse()
-        if resp.status != 200:
-            logger.debug("Docker socket returned %d for container %s", resp.status, container_id)
-            return _fallback_name, _fallback_version
-        data = json.loads(resp.read().decode())
-        conn.close()
-
-        # ── Step 3: extract image name and version ─────────────────────
-        raw_image = data.get("Config", {}).get("Image", "") or ""
-        labels    = data.get("Config", {}).get("Labels", {}) or {}
-
-        # raw_image may be "repo/name:tag", "name:tag", or just "name"
-        name = raw_image.split(":")[0] if raw_image else _fallback_name
-        # Prefer the explicit OCI version label over whatever is in the image tag
-        version = (
-            labels.get("org.opencontainers.image.version")
-            or (raw_image.split(":")[-1] if ":" in raw_image else None)
-            or _fallback_version
-        )
-        logger.info("Detected image: %s:%s (container %s)", name, version, container_id[:12])
-        return name or _fallback_name, version or _fallback_version
-
-    except FileNotFoundError:
-        logger.debug("/proc/self/cgroup or Docker socket not available; using fallback image info")
-    except Exception:
-        logger.debug("Image auto-detection failed; using fallback image info", exc_info=True)
+    result = _try_docker() or _try_kubernetes()
+    if result:
+        return result
+    logger.debug("Image auto-detection failed; using fallback: %s:%s",
+                 _fallback_name, _fallback_version)
     return _fallback_name, _fallback_version
 
 
