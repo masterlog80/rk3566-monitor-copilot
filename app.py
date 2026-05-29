@@ -1,5 +1,7 @@
 import csv
+import http.client
 import io
+import json
 import os
 import logging
 import re
@@ -30,11 +32,81 @@ RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", 14))
 RESAMPLE_AFTER_HOURS = int(os.getenv("RESAMPLE_AFTER_HOURS", 24))
 NPU_LOAD_PATH = os.getenv("NPU_LOAD_PATH", "/sys/kernel/debug/rknpu/load")
 DISK2_MOUNTPOINT = os.getenv("DISK2_MOUNTPOINT", "").strip()
-# Image name and version – set via env vars injected by Docker / Compose.
-# IMAGE_NAME  defaults to the docker-compose service image name.
-# IMAGE_VERSION defaults to the OCI label value baked into the Dockerfile.
-IMAGE_NAME    = os.getenv("IMAGE_NAME",    "rk3566-monitor-copilot")
-IMAGE_VERSION = os.getenv("IMAGE_VERSION", "2.5")
+def _detect_image_info() -> tuple[str, str]:
+    """Auto-detect the running container's image name and version.
+
+    Strategy
+    --------
+    1. Read this process's container ID from ``/proc/self/cgroup``.
+    2. Call the Docker daemon via the Unix socket
+       ``GET /containers/<id>/json`` — no extra dependencies needed.
+    3. Extract ``Config.Image`` (full image reference) and the OCI label
+       ``org.opencontainers.image.version`` from the response.
+    4. On any failure fall back to the IMAGE_NAME / IMAGE_VERSION env vars,
+       then to hardcoded defaults, so the app always starts cleanly even when
+       the Docker socket is not mounted (e.g. bare-metal or CI runs).
+    """
+    _fallback_name    = os.getenv("IMAGE_NAME",    "rk3566-monitor-copilot")
+    _fallback_version = os.getenv("IMAGE_VERSION", "2.5")
+    try:
+        # ── Step 1: read container ID from cgroup ──────────────────────
+        container_id: str | None = None
+        with open("/proc/self/cgroup", "r") as fh:
+            for line in fh:
+                line = line.strip()
+                # Traditional cgroup v1:  12:memory:/docker/<full-id>
+                # cgroup v2 systemd scope: 0::/system.slice/docker-<full-id>.scope
+                parts = line.split("/")
+                for i, part in enumerate(parts):
+                    if part == "docker" and i + 1 < len(parts):
+                        candidate = parts[i + 1]
+                        if len(candidate) >= 12:
+                            container_id = candidate[:64]
+                            break
+                    if part.startswith("docker-") and part.endswith(".scope"):
+                        container_id = part[len("docker-"):-len(".scope")]
+                        break
+                if container_id:
+                    break
+
+        if not container_id:
+            logger.debug("Could not determine container ID; using fallback image info")
+            return _fallback_name, _fallback_version
+
+        # ── Step 2: query Docker socket ────────────────────────────────
+        conn = http.client.UnixHTTPConnection("/var/run/docker.sock")
+        conn.request("GET", f"/containers/{container_id}/json",
+                     headers={"Host": "localhost"})
+        resp = conn.getresponse()
+        if resp.status != 200:
+            logger.debug("Docker socket returned %d for container %s", resp.status, container_id)
+            return _fallback_name, _fallback_version
+        data = json.loads(resp.read().decode())
+        conn.close()
+
+        # ── Step 3: extract image name and version ─────────────────────
+        raw_image = data.get("Config", {}).get("Image", "") or ""
+        labels    = data.get("Config", {}).get("Labels", {}) or {}
+
+        # raw_image may be "repo/name:tag", "name:tag", or just "name"
+        name = raw_image.split(":")[0] if raw_image else _fallback_name
+        # Prefer the explicit OCI version label over whatever is in the image tag
+        version = (
+            labels.get("org.opencontainers.image.version")
+            or (raw_image.split(":")[-1] if ":" in raw_image else None)
+            or _fallback_version
+        )
+        logger.info("Detected image: %s:%s (container %s)", name, version, container_id[:12])
+        return name or _fallback_name, version or _fallback_version
+
+    except FileNotFoundError:
+        logger.debug("/proc/self/cgroup or Docker socket not available; using fallback image info")
+    except Exception:
+        logger.debug("Image auto-detection failed; using fallback image info", exc_info=True)
+    return _fallback_name, _fallback_version
+
+
+IMAGE_NAME, IMAGE_VERSION = _detect_image_info()
 
 
 # ---------------------------------------------------------------------------
