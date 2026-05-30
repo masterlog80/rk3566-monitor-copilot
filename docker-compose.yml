@@ -26,7 +26,7 @@ services:
       #- IMAGE_VERSION=2.5
       - LOG_LEVEL=INFO
       # How often (in seconds) metrics are collected and broadcast to clients.
-      - POLL_INTERVAL_SECONDS=5 
+      - POLL_INTERVAL_SECONDS=5
       # How many days of data to retain in the local CSV log (older rows are pruned).
       - RETENTION_DAYS=14
       # After this many hours, high-frequency rows in the CSV log are resampled
