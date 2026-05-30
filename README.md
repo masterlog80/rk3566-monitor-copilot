@@ -8,7 +8,9 @@ A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based
 git clone https://github.com/masterlog80/rk3566-monitor-copilot.git
 cd rk3566-monitor-copilot
 
-docker builder prune -a -f
+#docker builder prune -a -f
+yes | docker image prune --all
+yes | docker builder prune --all
 
 docker build -t rk3566-monitor-copilot .
 
