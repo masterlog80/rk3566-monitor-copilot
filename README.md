@@ -3,18 +3,15 @@
 A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based single-board computers. Displays CPU usage, memory, temperature, NPU usage, and uptime with live Chart.js visualizations served over WebSockets.
 
 ## Instructions:
-1. Copy all the file on the same folder
+
 ```
 git clone https://github.com/masterlog80/rk3566-monitor-copilot.git
 cd rk3566-monitor-copilot
-```
-2. Build the docker image:
-```
-yes | docker image prune --all
+
+docker builder prune -a -f
+
 docker build -t rk3566-monitor-copilot .
-```
-3. Deploy the composer file:
-```
+
 docker compose -f docker-compose.yml up -d --remove-orphans
 ```
 4. Open [http://localhost:5000](http://localhost:5000) in your browser.
