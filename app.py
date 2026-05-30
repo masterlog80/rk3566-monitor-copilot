@@ -92,11 +92,37 @@ def _detect_image_info() -> tuple[str, str]:
             raw    = data.get("Config", {}).get("Image", "") or ""
             labels = data.get("Config", {}).get("Labels", {}) or {}
             name   = raw.split(":")[0] if raw else None
-            # Prefer the actual image tag (e.g. "latest", "2.6") because that
-            # is literally what was passed to `docker run` / docker-compose.
-            # Fall back to the OCI label only when the image has no tag at all
-            # (e.g. referenced by digest: "sha256:abc123…").
+
+            # Config.Image contains what was written in docker-compose.yml /
+            # passed to `docker run`.  When no tag was specified (e.g.
+            # `image: rk3566-monitor-copilot`) Docker omits `:latest` from
+            # this field entirely, so a plain split gives us nothing useful.
+            # In that case, do a second API call to inspect the image by its
+            # ID and read RepoTags, which always contains the full reference
+            # including the tag (e.g. "rk3566-monitor-copilot:latest").
             tag_from_ref = raw.split(":")[-1] if ":" in raw else None
+            if not tag_from_ref:
+                image_id = data.get("Image", "")   # sha256 digest or short id
+                if image_id:
+                    try:
+                        conn2 = http.client.UnixHTTPConnection("/var/run/docker.sock")
+                        conn2.request("GET", f"/images/{image_id}/json",
+                                      headers={"Host": "localhost"})
+                        r2 = conn2.getresponse()
+                        if r2.status == 200:
+                            img_data  = json.loads(r2.read().decode())
+                            conn2.close()
+                            repo_tags = img_data.get("RepoTags") or []
+                            # Pick the tag whose name matches; fall back to [0]
+                            matched = next(
+                                (t for t in repo_tags if t.startswith(name + ":")),
+                                repo_tags[0] if repo_tags else None,
+                            )
+                            if matched and ":" in matched:
+                                tag_from_ref = matched.split(":")[-1]
+                    except Exception:
+                        pass
+
             ver = tag_from_ref or labels.get("org.opencontainers.image.version")
             if name:
                 logger.info("Image info via Docker socket: %s:%s", name, ver)
