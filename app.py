@@ -92,8 +92,12 @@ def _detect_image_info() -> tuple[str, str]:
             raw    = data.get("Config", {}).get("Image", "") or ""
             labels = data.get("Config", {}).get("Labels", {}) or {}
             name   = raw.split(":")[0] if raw else None
-            ver    = (labels.get("org.opencontainers.image.version")
-                      or (raw.split(":")[-1] if ":" in raw else None))
+            # Prefer the actual image tag (e.g. "latest", "2.6") because that
+            # is literally what was passed to `docker run` / docker-compose.
+            # Fall back to the OCI label only when the image has no tag at all
+            # (e.g. referenced by digest: "sha256:abc123…").
+            tag_from_ref = raw.split(":")[-1] if ":" in raw else None
+            ver = tag_from_ref or labels.get("org.opencontainers.image.version")
             if name:
                 logger.info("Image info via Docker socket: %s:%s", name, ver)
                 return name, ver or _fallback_version
