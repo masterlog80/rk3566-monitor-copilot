@@ -26,6 +26,21 @@ let historyWindowSeconds = 3600;         // default: 1 hour
 let isZoomed      = false;
 let _refetchTimer = null;   // debounce handle for zoom/pan refetch
 
+// chartjs-plugin-zoom fires onZoomComplete even when resetZoom() is called
+// programmatically (timeframe button, exitZoom, log reset).  That callback
+// sets isZoomed = true, permanently blocking updateHistChart().
+// _suppressZoomCallback lets safeResetZoom() opt-out of that side-effect.
+let _suppressZoomCallback = false;
+
+function safeResetZoom() {
+  _suppressZoomCallback = true;
+  histChart.resetZoom();
+  // The callback may fire synchronously or on the next microtask; clear the
+  // flag after a short timeout to cover both cases.
+  setTimeout(() => { _suppressZoomCallback = false; }, 0);
+  isZoomed = false;
+}
+
 // ── In-memory history buffers ─────────────────────────────────────────
 const history = {
   labels:      [],   // Unix timestamps (ms)
@@ -391,6 +406,8 @@ function updateHistChart() {
 // ── Zoom / pan callbacks ──────────────────────────────────────────────────
 
 function onZoomOrPanComplete() {
+  // Ignore callbacks triggered by programmatic resetZoom() calls.
+  if (_suppressZoomCallback) return;
   isZoomed = true;
   if (_refetchTimer) clearTimeout(_refetchTimer);
   // Debounce: wait until the user stops interacting before hitting the server.
@@ -445,7 +462,7 @@ async function refetchVisibleRange() {
 function exitZoom() {
   isZoomed = false;
   if (_refetchTimer) { clearTimeout(_refetchTimer); _refetchTimer = null; }
-  histChart.resetZoom();
+  safeResetZoom();
   updateHistChart();
 }
 
@@ -504,10 +521,10 @@ document.querySelectorAll(".btn-tf[data-seconds]").forEach(btn => {
     isZoomed = false;
     if (_refetchTimer) { clearTimeout(_refetchTimer); _refetchTimer = null; }
 
-    // Immediately clear the chart so the user sees instant visual feedback
-    // that something changed, rather than stale data hanging around during
-    // the async fetch.
-    histChart.resetZoom();
+    // Immediately clear the chart for instant visual feedback.
+    // safeResetZoom() suppresses the onZoomComplete callback so it cannot
+    // set isZoomed=true and block the upcoming updateHistChart() call.
+    safeResetZoom();
     histChart.data.labels = [];
     histChart.data.datasets.forEach(ds => { ds.data = []; });
     histChart.update("none");
@@ -763,7 +780,7 @@ async function confirmResetLog() {
   history.freq.length   = 0;
 
   isZoomed = false;
-  histChart.resetZoom();
+  safeResetZoom();
   histChart.data.labels = [];
   histChart.data.datasets.forEach(ds => { ds.data = []; });
   histChart.update("none");
