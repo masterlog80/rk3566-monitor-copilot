@@ -328,8 +328,10 @@ const histChart = new Chart($("historyChart"), {
           onPanComplete: () => onZoomOrPanComplete(),
         },
         limits: {
-          // Minimum visible span: 5 data points (updated dynamically below)
-          x: { min: 0, max: 0, minRange: 5 },
+          // Minimum visible span: 5 data points.
+          // max is updated dynamically by updateHistChart() after each data load.
+          // Start at MAX_SAFE_INTEGER so pan is never frozen before first load.
+          x: { min: 0, max: Number.MAX_SAFE_INTEGER, minRange: 5 },
         },
       },
     },
@@ -452,30 +454,43 @@ function exitZoom() {
 // Called once at startup after /api/history/bounds is known, and again
 // after a log reset.
 function updateTimeframeButtons(oldestTs) {
-  const availableSeconds = oldestTs
-    ? Math.floor(Date.now() / 1000) - oldestTs
-    : 0;
+  const now = Math.floor(Date.now() / 1000);
+  const availableSeconds = oldestTs ? now - oldestTs : 0;
+  const allBtns = [...document.querySelectorAll(".btn-tf[data-seconds]")];
 
-  document.querySelectorAll(".btn-tf[data-seconds]").forEach(btn => {
+  // Show/hide each button based on available data span.
+  allBtns.forEach(btn => {
     const btnSec = parseInt(btn.dataset.seconds, 10);
-    const show = !oldestTs || btnSec <= availableSeconds * 1.1;
-    btn.style.display = show ? "" : "none";
-
-    // If the currently active button just became hidden, fall back to the
-    // smallest still-visible button so the user always sees a valid default.
-    if (!show && btn.classList.contains("active")) {
-      btn.classList.remove("active");
-      const visible = [...document.querySelectorAll(".btn-tf[data-seconds]")]
-        .filter(b => b.style.display !== "none");
-      if (visible.length) {
-        const smallest = visible.reduce((a, b) =>
-          parseInt(b.dataset.seconds) < parseInt(a.dataset.seconds) ? b : a
-        );
-        smallest.classList.add("active");
-        historyWindowSeconds = parseInt(smallest.dataset.seconds, 10);
-      }
-    }
+    // Allow a 10 % margin so the current-window button is never hidden by
+    // minor clock drift. Always show if we have no bounds (oldestTs falsy).
+    const fits = !oldestTs || btnSec <= availableSeconds * 1.1;
+    btn.style.display = fits ? "" : "none";
   });
+
+  // Guarantee at least the smallest button is always visible so the user
+  // can always zoom in even if the service has barely started.
+  const visibleAfter = allBtns.filter(b => b.style.display !== "none");
+  if (visibleAfter.length === 0) {
+    allBtns[0].style.display = "";   // allBtns[0] is "1 min" in the HTML order
+  }
+
+  // If the currently active button was just hidden, switch to the LARGEST
+  // still-visible button — e.g. if you were on "1 week" and only 3 h of data
+  // exist, switch to the widest available window, not down to "1 min".
+  const activeVisible = allBtns.filter(
+    b => b.classList.contains("active") && b.style.display !== "none"
+  );
+  if (activeVisible.length === 0) {
+    const nowVisible = allBtns.filter(b => b.style.display !== "none");
+    if (nowVisible.length) {
+      document.querySelectorAll(".btn-tf").forEach(b => b.classList.remove("active"));
+      const largest = nowVisible.reduce((a, b) =>
+        parseInt(b.dataset.seconds) > parseInt(a.dataset.seconds) ? b : a
+      );
+      largest.classList.add("active");
+      historyWindowSeconds = parseInt(largest.dataset.seconds, 10);
+    }
+  }
 }
 
 // ── Timeframe selector ────────────────────────────────────────────────────
@@ -484,18 +499,22 @@ document.querySelectorAll(".btn-tf[data-seconds]").forEach(btn => {
     document.querySelectorAll(".btn-tf[data-seconds]").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     historyWindowSeconds = parseInt(btn.dataset.seconds, 10);
-    // Always exit zoom mode first — if isZoomed is still true, updateHistChart()
-    // would be blocked and loadHistory() would render nothing after fetching.
+
+    // Always exit zoom mode first.
     isZoomed = false;
     if (_refetchTimer) { clearTimeout(_refetchTimer); _refetchTimer = null; }
-    // Clear in-memory buffers so loadHistory fills them fresh for the new window.
-    history.labels.length = 0;
-    history.cpu.length    = 0;
-    history.mem.length    = 0;
-    history.npu.length    = 0;
-    history.freq.length   = 0;
-    // Reset zoom plugin state, then reload.
+
+    // Immediately clear the chart so the user sees instant visual feedback
+    // that something changed, rather than stale data hanging around during
+    // the async fetch.
     histChart.resetZoom();
+    histChart.data.labels = [];
+    histChart.data.datasets.forEach(ds => { ds.data = []; });
+    histChart.update("none");
+
+    // loadHistory() clears history[] itself before fetching, which prevents
+    // the race condition where a WS tick pushes an out-of-order point into
+    // history[] between the clear here and the fetch completing.
     loadHistory();
   });
 });
@@ -659,6 +678,17 @@ function startPolling() {
 
 // ── History preload ───────────────────────────────────────────────────────
 async function loadHistory() {
+  // Always own the clear so there is no race between the caller clearing
+  // history[] and a WS tick pushing an out-of-order point before the fetch
+  // completes.  WebSocket ticks that arrive DURING the fetch will push
+  // to the now-empty buffer; their timestamps will be >= the historical rows
+  // fetched below, so chronological order is preserved.
+  history.labels.length = 0;
+  history.cpu.length    = 0;
+  history.mem.length    = 0;
+  history.npu.length    = 0;
+  history.freq.length   = 0;
+
   try {
     const resp = await fetch(
       `/api/history?window=${historyWindowSeconds}&max_points=${MAX_HISTORY_LEN}`
