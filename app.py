@@ -1,10 +1,10 @@
 import csv
-import http.client
 import io
 import json
 import os
 import logging
 import re
+import socket
 import ssl
 import time
 import psutil
@@ -33,6 +33,41 @@ RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", 14))
 RESAMPLE_AFTER_HOURS = int(os.getenv("RESAMPLE_AFTER_HOURS", 24))
 NPU_LOAD_PATH = os.getenv("NPU_LOAD_PATH", "/sys/kernel/debug/rknpu/load")
 DISK2_MOUNTPOINT = os.getenv("DISK2_MOUNTPOINT", "").strip()
+def _docker_api_get(api_path: str) -> dict | None:
+    """Call the Docker daemon via its Unix socket and return the parsed JSON body.
+
+    Uses raw AF_UNIX sockets because Python's stdlib http.client has no
+    Unix-socket support.  Returns None on any network or HTTP error.
+    """
+    sock_path = "/var/run/docker.sock"
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.settimeout(5)
+            sock.connect(sock_path)
+            sock.sendall(
+                f"GET {api_path} HTTP/1.0\r\nHost: localhost\r\n\r\n"
+                .encode()
+            )
+            buf = b""
+            while True:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+        sep = buf.find(b"\r\n\r\n")
+        if sep == -1:
+            return None
+        status_line = buf[:buf.find(b"\r\n")].decode()
+        status = int(status_line.split(" ", 2)[1])
+        if status != 200:
+            logger.warning("Docker API %s returned HTTP %d", api_path, status)
+            return None
+        return json.loads(buf[sep + 4:].decode("utf-8", errors="replace"))
+    except Exception as exc:
+        logger.warning("Docker API request to %r failed: %s", api_path, exc)
+        return None
+
+
 def _detect_image_info() -> tuple[str, str]:
     """Auto-detect the running container's image name and version/tag.
 
@@ -106,16 +141,11 @@ def _detect_image_info() -> tuple[str, str]:
                 return None
 
             # ── Step 3: query Docker socket for container info ─────────────
-            conn = http.client.UnixHTTPConnection("/var/run/docker.sock")
-            conn.request("GET", f"/containers/{container_id}/json",
-                         headers={"Host": "localhost"})
-            resp = conn.getresponse()
-            if resp.status != 200:
-                logger.warning("Image detection: Docker socket returned HTTP %d "
-                               "for container %r", resp.status, container_id)
+            data = _docker_api_get(f"/containers/{container_id}/json")
+            if data is None:
+                logger.warning("Image detection: container inspect failed "
+                               "for container %r", container_id)
                 return None
-            data = json.loads(resp.read().decode())
-            conn.close()
 
             raw  = data.get("Config", {}).get("Image", "") or ""
             name = raw.split(":")[0] if raw else None
@@ -129,27 +159,16 @@ def _detect_image_info() -> tuple[str, str]:
             if not tag:
                 image_id = data.get("Image", "")
                 if image_id:
-                    try:
-                        conn2 = http.client.UnixHTTPConnection("/var/run/docker.sock")
-                        conn2.request("GET", f"/images/{image_id}/json",
-                                      headers={"Host": "localhost"})
-                        r2 = conn2.getresponse()
-                        if r2.status == 200:
-                            img_data  = json.loads(r2.read().decode())
-                            conn2.close()
-                            repo_tags = img_data.get("RepoTags") or []
-                            matched = next(
-                                (t for t in repo_tags
-                                 if t.startswith((name or "") + ":")),
-                                repo_tags[0] if repo_tags else None,
-                            )
-                            if matched and ":" in matched:
-                                tag = matched.split(":")[-1]
-                        else:
-                            logger.warning("Image detection: image inspect returned "
-                                           "HTTP %d for %r", r2.status, image_id)
-                    except Exception as exc:
-                        logger.warning("Image detection: image inspect failed: %s", exc)
+                    img_data = _docker_api_get(f"/images/{image_id}/json")
+                    if img_data is not None:
+                        repo_tags = img_data.get("RepoTags") or []
+                        matched = next(
+                            (t for t in repo_tags
+                             if t.startswith((name or "") + ":")),
+                            repo_tags[0] if repo_tags else None,
+                        )
+                        if matched and ":" in matched:
+                            tag = matched.split(":")[-1]
 
             if name:
                 logger.info("Image info via Docker socket: %s:%s "
