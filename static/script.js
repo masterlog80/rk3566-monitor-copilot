@@ -424,15 +424,15 @@ async function refetchVisibleRange() {
     if (!Array.isArray(rows) || rows.length === 0) return;
 
     // Replace chart data directly; do NOT touch history[] live buffers.
+    // Do NOT call resetZoom() here — that would wipe the zoom viewport and
+    // cause the next wheel event to start from full scale again.
+    // Chart.js re-renders within the existing zoom viewport automatically
+    // when we call update("none") after replacing the data arrays.
     histChart.data.labels           = rows.map(r => r.timestamp * 1000);
     histChart.data.datasets[0].data = rows.map(r => r.cpu_percent);
     histChart.data.datasets[1].data = rows.map(r => r.memory_percent);
     histChart.data.datasets[2].data = rows.map(r => r.npu_percent);
     histChart.data.datasets[3].data = rows.map(r => r.cpu_freq_mhz);
-
-    // Reset zoom to show all the newly fetched (high-res) data for this range,
-    // then re-apply the viewport so the x-axis snaps to the correct window.
-    histChart.resetZoom();
     histChart.update("none");
   } catch (err) {
     console.warn("Zoom refetch failed:", err);
@@ -458,24 +458,21 @@ function updateTimeframeButtons(oldestTs) {
 
   document.querySelectorAll(".btn-tf[data-seconds]").forEach(btn => {
     const btnSec = parseInt(btn.dataset.seconds, 10);
-    // Keep the button if it covers ≤ 110 % of the available data (small
-    // margin so the "current" button is never hidden by clock drift).
     const show = !oldestTs || btnSec <= availableSeconds * 1.1;
     btn.style.display = show ? "" : "none";
 
-    // If the active button just became unavailable, reset to 1 hr (or the
-    // smallest button that is still visible).
+    // If the currently active button just became hidden, fall back to the
+    // smallest still-visible button so the user always sees a valid default.
     if (!show && btn.classList.contains("active")) {
       btn.classList.remove("active");
-      // Pick the largest still-visible button as the new active one.
       const visible = [...document.querySelectorAll(".btn-tf[data-seconds]")]
         .filter(b => b.style.display !== "none");
       if (visible.length) {
-        const largest = visible.reduce((a, b) =>
-          parseInt(b.dataset.seconds) > parseInt(a.dataset.seconds) ? b : a
+        const smallest = visible.reduce((a, b) =>
+          parseInt(b.dataset.seconds) < parseInt(a.dataset.seconds) ? b : a
         );
-        largest.classList.add("active");
-        historyWindowSeconds = parseInt(largest.dataset.seconds, 10);
+        smallest.classList.add("active");
+        historyWindowSeconds = parseInt(smallest.dataset.seconds, 10);
       }
     }
   });
@@ -487,14 +484,17 @@ document.querySelectorAll(".btn-tf[data-seconds]").forEach(btn => {
     document.querySelectorAll(".btn-tf[data-seconds]").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     historyWindowSeconds = parseInt(btn.dataset.seconds, 10);
-    // Exit zoom mode; clear buffers and re-fetch the correct window.
+    // Always exit zoom mode first — if isZoomed is still true, updateHistChart()
+    // would be blocked and loadHistory() would render nothing after fetching.
     isZoomed = false;
     if (_refetchTimer) { clearTimeout(_refetchTimer); _refetchTimer = null; }
+    // Clear in-memory buffers so loadHistory fills them fresh for the new window.
     history.labels.length = 0;
     history.cpu.length    = 0;
     history.mem.length    = 0;
     history.npu.length    = 0;
     history.freq.length   = 0;
+    // Reset zoom plugin state, then reload.
     histChart.resetZoom();
     loadHistory();
   });
@@ -771,12 +771,18 @@ async function confirmResetLog() {
     }
   } catch (_) { /* non-fatal – all buttons remain visible */ }
 
-  // Ensure the default active button matches historyWindowSeconds.
-  // Find the button matching the default, falling back to the first visible.
-  const defaultBtn = document.querySelector(`.btn-tf[data-seconds="${historyWindowSeconds}"]`);
-  if (defaultBtn && defaultBtn.style.display !== "none") {
+  // After hiding unavailable buttons, activate the smallest visible one so
+  // the UI opens at the finest resolution that makes sense for the data.
+  // This also ensures historyWindowSeconds matches the displayed button.
+  const visibleBtns = [...document.querySelectorAll(".btn-tf[data-seconds]")]
+    .filter(b => b.style.display !== "none");
+  if (visibleBtns.length) {
     document.querySelectorAll(".btn-tf").forEach(b => b.classList.remove("active"));
-    defaultBtn.classList.add("active");
+    const smallest = visibleBtns.reduce((a, b) =>
+      parseInt(b.dataset.seconds) < parseInt(a.dataset.seconds) ? b : a
+    );
+    smallest.classList.add("active");
+    historyWindowSeconds = parseInt(smallest.dataset.seconds, 10);
   }
 
   // 2. Pre-populate history chart from the CSV log.
