@@ -67,37 +67,64 @@ def _detect_image_info() -> tuple[str, str]:
     # ── Strategy 1: Docker socket ───────────────────────────────────────────
     def _try_docker() -> tuple[str, str] | None:
         try:
-            container_id: str | None = None
-            with open("/proc/self/cgroup", "r") as fh:
-                for line in fh:
-                    parts = line.strip().split("/")
-                    for i, part in enumerate(parts):
-                        if part == "docker" and i + 1 < len(parts):
-                            candidate = parts[i + 1]
-                            if len(candidate) >= 12:
-                                container_id = candidate[:64]
+            # ── Step 1: resolve container ID ──────────────────────────────
+            # Docker sets $HOSTNAME to the container's short ID (12 chars)
+            # by default.  This is simpler and more reliable than parsing
+            # /proc/self/cgroup, which varies across cgroup v1/v2/systemd.
+            container_id: str | None = os.environ.get("HOSTNAME", "").strip() or None
+
+            # Fallback: parse /proc/self/cgroup when HOSTNAME is overridden.
+            if not container_id or len(container_id) < 12:
+                try:
+                    with open("/proc/self/cgroup", "r") as fh:
+                        for line in fh:
+                            parts = line.strip().split("/")
+                            for i, part in enumerate(parts):
+                                if part == "docker" and i + 1 < len(parts):
+                                    candidate = parts[i + 1]
+                                    if len(candidate) >= 12:
+                                        container_id = candidate[:64]
+                                        break
+                                if part.startswith("docker-") and part.endswith(".scope"):
+                                    container_id = part[len("docker-"):-len(".scope")]
+                                    break
+                            if container_id and len(container_id) >= 12:
                                 break
-                        if part.startswith("docker-") and part.endswith(".scope"):
-                            container_id = part[len("docker-"):-len(".scope")]
-                            break
-                    if container_id:
-                        break
+                except OSError:
+                    pass
+
             if not container_id:
+                logger.warning("Image detection: could not determine container ID "
+                               "(HOSTNAME=%r, /proc/self/cgroup yielded nothing)",
+                               os.environ.get("HOSTNAME", ""))
                 return None
+
+            # ── Step 2: check socket exists ────────────────────────────────
+            if not os.path.exists("/var/run/docker.sock"):
+                logger.warning("Image detection: /var/run/docker.sock not found — "
+                               "mount it read-only in docker-compose.yml")
+                return None
+
+            # ── Step 3: query Docker socket for container info ─────────────
             conn = http.client.UnixHTTPConnection("/var/run/docker.sock")
             conn.request("GET", f"/containers/{container_id}/json",
                          headers={"Host": "localhost"})
             resp = conn.getresponse()
             if resp.status != 200:
+                logger.warning("Image detection: Docker socket returned HTTP %d "
+                               "for container %r", resp.status, container_id)
                 return None
             data = json.loads(resp.read().decode())
             conn.close()
+
             raw  = data.get("Config", {}).get("Image", "") or ""
             name = raw.split(":")[0] if raw else None
 
-            # Config.Image may omit the tag when docker-compose.yml has
-            # `image: name` without an explicit tag.  In that case Docker
-            # still knows the resolved tags via the image inspect endpoint.
+            # ── Step 4: resolve tag ────────────────────────────────────────
+            # Config.Image omits the tag when docker-compose.yml specifies
+            # `image: name` without an explicit tag (e.g. no `:latest`).
+            # In that case inspect the image by its SHA256 ID to read
+            # RepoTags, which always contains the full `name:tag` reference.
             tag = raw.split(":")[-1] if ":" in raw else None
             if not tag:
                 image_id = data.get("Image", "")
@@ -111,21 +138,27 @@ def _detect_image_info() -> tuple[str, str]:
                             img_data  = json.loads(r2.read().decode())
                             conn2.close()
                             repo_tags = img_data.get("RepoTags") or []
-                            # Prefer a tag whose name matches the container image name
                             matched = next(
-                                (t for t in repo_tags if t.startswith((name or "") + ":")),
+                                (t for t in repo_tags
+                                 if t.startswith((name or "") + ":")),
                                 repo_tags[0] if repo_tags else None,
                             )
                             if matched and ":" in matched:
                                 tag = matched.split(":")[-1]
-                    except Exception:
-                        pass
+                        else:
+                            logger.warning("Image detection: image inspect returned "
+                                           "HTTP %d for %r", r2.status, image_id)
+                    except Exception as exc:
+                        logger.warning("Image detection: image inspect failed: %s", exc)
 
             if name:
-                logger.info("Image info via Docker socket: %s:%s", name, tag)
+                logger.info("Image info via Docker socket: %s:%s "
+                            "(container %.12s)", name, tag, container_id)
                 return name, tag or _fallback_version
-        except Exception:
-            pass
+            logger.warning("Image detection: Config.Image was empty "
+                           "for container %r", container_id)
+        except Exception as exc:
+            logger.warning("Image detection via Docker socket failed: %s", exc)
         return None
 
     # ── Strategy 2: Kubernetes API ──────────────────────────────────────────
