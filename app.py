@@ -34,16 +34,18 @@ RESAMPLE_AFTER_HOURS = int(os.getenv("RESAMPLE_AFTER_HOURS", 24))
 NPU_LOAD_PATH = os.getenv("NPU_LOAD_PATH", "/sys/kernel/debug/rknpu/load")
 DISK2_MOUNTPOINT = os.getenv("DISK2_MOUNTPOINT", "").strip()
 def _detect_image_info() -> tuple[str, str]:
-    """Auto-detect the running container's image name and version.
+    """Auto-detect the running container's image name and version/tag.
 
     Tries two strategies in order so the same image works in every deployment
     environment without any manual configuration:
 
     1. **Docker socket** – for docker-compose / bare-metal Docker.
-       Reads the container ID from ``/proc/self/cgroup``, then calls
-       ``GET /containers/<id>/json`` over ``/var/run/docker.sock`` (stdlib
-       only, no extra packages).  Extracts ``Config.Image`` and the OCI
-       label ``org.opencontainers.image.version``.
+       Reads the container ID from ``/proc/self/cgroup``, calls
+       ``GET /containers/<id>/json`` and reads ``Config.Image``.
+       When no tag is present in ``Config.Image`` (which happens when
+       docker-compose.yml specifies ``image: name`` without a tag), a second
+       call ``GET /images/<image-id>/json`` resolves the full ``RepoTags``
+       (e.g. ``["rk3566-monitor-copilot:latest"]``).
 
     2. **Kubernetes API** – for k3s / k8s (containerd, no Docker socket).
        Every pod has a service-account token at
@@ -56,10 +58,11 @@ def _detect_image_info() -> tuple[str, str]:
     3. **Environment variables** ``IMAGE_NAME`` / ``IMAGE_VERSION`` –
        explicit override, useful in CI or when neither socket is available.
 
-    4. **Hardcoded defaults** – last resort so the app always starts.
+    4. **Last resort** – returns ``("rk3566-monitor-copilot", "unknown")``
+       so the app always starts cleanly.
     """
     _fallback_name    = os.getenv("IMAGE_NAME",    "rk3566-monitor-copilot")
-    _fallback_version = os.getenv("IMAGE_VERSION", "2.5")
+    _fallback_version = os.getenv("IMAGE_VERSION", "unknown")
 
     # ── Strategy 1: Docker socket ───────────────────────────────────────────
     def _try_docker() -> tuple[str, str] | None:
@@ -87,22 +90,17 @@ def _detect_image_info() -> tuple[str, str]:
             resp = conn.getresponse()
             if resp.status != 200:
                 return None
-            data   = json.loads(resp.read().decode())
+            data = json.loads(resp.read().decode())
             conn.close()
-            raw    = data.get("Config", {}).get("Image", "") or ""
-            labels = data.get("Config", {}).get("Labels", {}) or {}
-            name   = raw.split(":")[0] if raw else None
+            raw  = data.get("Config", {}).get("Image", "") or ""
+            name = raw.split(":")[0] if raw else None
 
-            # Config.Image contains what was written in docker-compose.yml /
-            # passed to `docker run`.  When no tag was specified (e.g.
-            # `image: rk3566-monitor-copilot`) Docker omits `:latest` from
-            # this field entirely, so a plain split gives us nothing useful.
-            # In that case, do a second API call to inspect the image by its
-            # ID and read RepoTags, which always contains the full reference
-            # including the tag (e.g. "rk3566-monitor-copilot:latest").
-            tag_from_ref = raw.split(":")[-1] if ":" in raw else None
-            if not tag_from_ref:
-                image_id = data.get("Image", "")   # sha256 digest or short id
+            # Config.Image may omit the tag when docker-compose.yml has
+            # `image: name` without an explicit tag.  In that case Docker
+            # still knows the resolved tags via the image inspect endpoint.
+            tag = raw.split(":")[-1] if ":" in raw else None
+            if not tag:
+                image_id = data.get("Image", "")
                 if image_id:
                     try:
                         conn2 = http.client.UnixHTTPConnection("/var/run/docker.sock")
@@ -113,20 +111,19 @@ def _detect_image_info() -> tuple[str, str]:
                             img_data  = json.loads(r2.read().decode())
                             conn2.close()
                             repo_tags = img_data.get("RepoTags") or []
-                            # Pick the tag whose name matches; fall back to [0]
+                            # Prefer a tag whose name matches the container image name
                             matched = next(
-                                (t for t in repo_tags if t.startswith(name + ":")),
+                                (t for t in repo_tags if t.startswith((name or "") + ":")),
                                 repo_tags[0] if repo_tags else None,
                             )
                             if matched and ":" in matched:
-                                tag_from_ref = matched.split(":")[-1]
+                                tag = matched.split(":")[-1]
                     except Exception:
                         pass
 
-            ver = tag_from_ref or labels.get("org.opencontainers.image.version")
             if name:
-                logger.info("Image info via Docker socket: %s:%s", name, ver)
-                return name, ver or _fallback_version
+                logger.info("Image info via Docker socket: %s:%s", name, tag)
+                return name, tag or _fallback_version
         except Exception:
             pass
         return None
@@ -180,10 +177,10 @@ def _detect_image_info() -> tuple[str, str]:
             # Strip registry prefix e.g. "docker.io/library/" → "name:tag"
             short = raw.split("/")[-1]
             name  = short.split(":")[0]
-            ver   = short.split(":")[-1] if ":" in short else _fallback_version
+            tag   = short.split(":")[-1] if ":" in short else None
             logger.info("Image info via Kubernetes API: %s:%s (pod %s/%s)",
-                        name, ver, ns, pod_name)
-            return name or None, ver or _fallback_version
+                        name, tag, ns, pod_name)
+            return name or None, tag or _fallback_version
         except Exception:
             pass
         return None
