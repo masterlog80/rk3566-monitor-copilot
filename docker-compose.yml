@@ -1,7 +1,7 @@
 services:
   monitor:
     build: .
-    image: rk3566-monitor-copilot
+    image: rk3566-monitor-copilot:latest
     container_name: rk3566-monitor-copilot
     privileged: true
     networks:
