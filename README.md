@@ -15,6 +15,14 @@ yes | docker builder prune --all
 docker build -t rk3566-monitor-copilot .
 
 docker compose -f docker-compose.yml up -d --remove-orphans
+
+sleep 5
+
+VERSION=$(grep 'org.opencontainers.image.version' Dockerfile | sed -E 's/.*version="([^"]+)".*/\1/')
+docker tag rk3566-monitor-copilot:latest zot.salvetti.info/rk3566-monitor-copilot:${VERSION}
+
+read -p "Push image zot.salvetti.info/rk3566-monitor-copilot:${VERSION}? [Y/N] " answer && [[ "$answer" =~ ^[Yy]$ ]] && docker push zot.salvetti.info/rk3566-monitor-copilot:${VERSION}
+
 ```
 4. Open [http://localhost:5000](http://localhost:5000) in your browser.
 
