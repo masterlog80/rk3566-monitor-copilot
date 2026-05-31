@@ -239,12 +239,13 @@ const histChart = new Chart($("historyChart"), {
       { label: "CPU Freq (MHz)",borderColor: "#e3b341", backgroundColor: "#e3b34122", yAxisID: "y1" },
     ].map(d => Object.assign(d, {
       data: [],
-      borderWidth: 2,
+      borderWidth: 1.5,
       pointRadius: 0,
       pointHoverRadius: 4,
       fill: true,
-      tension: 0.3,
+      tension: 0,        // straight lines: no bezier computation per segment
       spanGaps: false,
+      parsing: false,    // data already in {x,y} or plain numeric form — skip re-parse
     })),
   },
   options: {
@@ -328,6 +329,15 @@ const histChart = new Chart($("historyChart"), {
             return ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} %`;
           },
         },
+      },
+      // LTTB decimation: reduces rendered points to ~500 without visible
+      // distortion, dramatically cutting Chart.js render time on long windows.
+      // The plugin runs only when the dataset has more points than `samples`.
+      decimation: {
+        enabled: true,
+        algorithm: "lttb",
+        samples: 500,
+        threshold: 500,
       },
       zoom: {
         zoom: {
@@ -726,7 +736,8 @@ async function loadHistory() {
       }
     });
 
-    const trim = arr => { while (arr.length > MAX_HISTORY_LEN) arr.shift(); };
+    // splice(0, excess) is O(N) single pass; while+shift would be O(N²) for large surplus
+    const trim = arr => { const ex = arr.length - MAX_HISTORY_LEN; if (ex > 0) arr.splice(0, ex); };
     [history.labels, history.cpu, history.mem, history.npu, history.freq,
      tempLine.data.labels, tempLine.data.datasets[0].data,
      gpuTempLine.data.labels, gpuTempLine.data.datasets[0].data].forEach(trim);
