@@ -249,8 +249,8 @@ def _detect_image_info() -> tuple[str, str]:
             logger.info("Image info via Kubernetes API: %s:%s (pod %s/%s)",
                         name, tag, ns, pod_name)
             return name or None, tag or _fallback_version
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Image detection via k8s API failed: %s", exc)
         return None
 
     result = _try_docker() or _try_kubernetes()
@@ -432,6 +432,33 @@ def _format_uptime(seconds: int) -> str:
         parts.append(f"{minutes}m")
     parts.append(f"{secs}s")
     return " ".join(parts)
+
+
+def _read_hardware_model() -> str:
+    """Read the hardware model string once at startup (static value)."""
+    hw_model = "Unknown"
+    try:
+        with open("/proc/cpuinfo", "r") as fh:
+            for line in fh:
+                if line.lower().startswith("hardware"):
+                    hw_model = line.split(":", 1)[1].strip()
+                    break
+                if line.lower().startswith("model name"):
+                    hw_model = line.split(":", 1)[1].strip()
+    except OSError:
+        hw_model = "N/A (not Linux)"
+    if hw_model == "Unknown":
+        try:
+            with open("/proc/device-tree/model", "r") as fh:
+                dt_model = fh.read().rstrip("\x00").strip()
+                if dt_model:
+                    hw_model = dt_model
+        except OSError:
+            pass
+    return hw_model
+
+
+_HW_MODEL: str = _read_hardware_model()
 
 
 _CSV_HEADER = [
@@ -645,28 +672,7 @@ def collect_metrics() -> dict:
     except OSError:
         pass
 
-    # /proc/cpuinfo – grab Model name / Hardware line
-    hw_model = "Unknown"
-    try:
-        with open("/proc/cpuinfo", "r") as fh:
-            for line in fh:
-                if line.lower().startswith("hardware"):
-                    hw_model = line.split(":", 1)[1].strip()
-                    break
-                if line.lower().startswith("model name"):
-                    hw_model = line.split(":", 1)[1].strip()
-    except OSError:
-        hw_model = "N/A (not Linux)"
-
-    # Fallback: /proc/device-tree/model (common on ARM SBCs like RK3566)
-    if hw_model == "Unknown":
-        try:
-            with open("/proc/device-tree/model", "r") as fh:
-                dt_model = fh.read().rstrip("\x00").strip()
-                if dt_model:
-                    hw_model = dt_model
-        except OSError:
-            pass
+    hw_model = _HW_MODEL  # cached once at startup
 
     return {
         "cpu": {
@@ -796,15 +802,16 @@ def api_history():
             return None
 
     # ── parse query params ────────────────────────────────────────────────
-    try:
-        window_s = int(request.args.get("window", 0))
-    except (ValueError, TypeError):
-        window_s = 0
+    def _int_arg(name, default=0):
+        try:
+            return int(request.args.get(name, default))
+        except (ValueError, TypeError):
+            return default
 
-    try:
-        max_points = max(1, int(request.args.get("max_points", 2000)))
-    except (ValueError, TypeError):
-        max_points = 2000
+    window_s   = _int_arg("window")
+    since_s    = _int_arg("since")
+    until_s    = _int_arg("until")
+    max_points = max(1, _int_arg("max_points", 2000))
 
     result = []
     if not os.path.exists(METRICS_LOG_FILE):
@@ -812,9 +819,17 @@ def api_history():
     try:
         now              = int(time.time())
         retention_cutoff = now - RETENTION_DAYS * 86400
-        window_cutoff    = (now - window_s) if window_s > 0 else retention_cutoff
-        # Never return data older than RETENTION_DAYS, even if window is wider
-        cutoff           = max(retention_cutoff, window_cutoff)
+
+        # since overrides window; both are floored by retention_cutoff
+        if since_s > 0:
+            cutoff = max(retention_cutoff, since_s)
+        elif window_s > 0:
+            cutoff = max(retention_cutoff, now - window_s)
+        else:
+            cutoff = retention_cutoff
+
+        # until defaults to now (open-ended)
+        upper = until_s if until_s > 0 else now
 
         with open(METRICS_LOG_FILE, "r", newline="") as fh:
             reader = csv.DictReader(fh)
@@ -823,7 +838,7 @@ def api_history():
                     ts = int(row["timestamp"])
                 except (ValueError, KeyError):
                     continue
-                if ts < cutoff:
+                if ts < cutoff or ts > upper:
                     continue
                 result.append({
                     "timestamp":         ts,
@@ -860,7 +875,7 @@ def api_metrics():
 @app.route("/api/cpu")
 def api_cpu():
     try:
-        m = collect_metrics()
+        m = _get_cached_metrics()
         return jsonify(m["cpu"])
     except Exception as exc:  # noqa: BLE001
         logger.exception("Failed to collect CPU metrics")
@@ -870,7 +885,7 @@ def api_cpu():
 @app.route("/api/memory")
 def api_memory():
     try:
-        m = collect_metrics()
+        m = _get_cached_metrics()
         return jsonify(m["memory"])
     except Exception as exc:  # noqa: BLE001
         logger.exception("Failed to collect memory metrics")
@@ -880,7 +895,7 @@ def api_memory():
 @app.route("/api/npu")
 def api_npu():
     try:
-        m = collect_metrics()
+        m = _get_cached_metrics()
         return jsonify(m["npu"])
     except Exception as exc:  # noqa: BLE001
         logger.exception("Failed to collect NPU metrics")
@@ -890,7 +905,7 @@ def api_npu():
 @app.route("/api/system")
 def api_system():
     try:
-        m = collect_metrics()
+        m = _get_cached_metrics()
         return jsonify(m["system"])
     except Exception as exc:  # noqa: BLE001
         logger.exception("Failed to collect system metrics")
@@ -1005,20 +1020,38 @@ def ws_request_metrics():
 
 _MAINTENANCE_INTERVAL_SECONDS = 3600  # run CSV maintenance once per hour
 
+# Cache of the most recent broadcast metrics dict.
+# Sub-endpoints (/api/cpu, /api/memory, etc.) reuse this instead of calling
+# collect_metrics() independently, which would include a blocking 0.2 s
+# cpu_percent(interval=0.2) call each time.
+_last_broadcast_metrics: dict | None = None
+
+
+def _get_cached_metrics() -> dict:
+    """Return last broadcast metrics if available, otherwise collect fresh."""
+    if _last_broadcast_metrics is not None:
+        return _last_broadcast_metrics
+    return collect_metrics()
+
 
 def _metrics_broadcast_task():
-    _maintain_csv_log()  # run once at startup
+    global _last_broadcast_metrics
+    # Defer CSV maintenance to a background sleep so the first metric
+    # broadcast is not delayed by a potentially slow full-file scan.
+    first_maintenance_done = False
     last_maintenance = int(time.time())
     while True:
         try:
             data = collect_metrics()
+            _last_broadcast_metrics = data
             socketio.emit("metrics", data)
             _append_metrics_to_csv(data)
             _update_prometheus_gauges(data)
             now = int(time.time())
-            if now - last_maintenance >= _MAINTENANCE_INTERVAL_SECONDS:
+            if not first_maintenance_done or now - last_maintenance >= _MAINTENANCE_INTERVAL_SECONDS:
                 _maintain_csv_log()
                 last_maintenance = now
+                first_maintenance_done = True
         except Exception:  # noqa: BLE001
             logger.exception("Background metrics broadcast error")
         socketio.sleep(POLL_INTERVAL_SECONDS)
