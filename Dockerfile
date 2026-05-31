@@ -9,7 +9,7 @@ LABEL org.opencontainers.image.title="RK3566 System Monitor" \
       org.opencontainers.image.authors="Lorenzo (via Github Copilot/Claude)" \
       org.opencontainers.image.vendor="Lorenzo (via Github Copilot/Claude)" \
       org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.version="2.7" \
+      org.opencontainers.image.version="2.8" \
       org.opencontainers.image.created="2026-05-31T07:50:00Z"
 
 WORKDIR /app
