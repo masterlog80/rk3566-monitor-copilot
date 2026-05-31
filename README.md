@@ -8,6 +8,12 @@ A real-time web dashboard for monitoring RK3566 (Rockchip) and other Linux-based
 git clone https://github.com/masterlog80/rk3566-monitor-copilot.git
 cd rk3566-monitor-copilot
 
+CREATED=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+sed -i.bak -E \
+  "s|(org\.opencontainers\.image\.created=\")[^\"]*(\")|\1${CREATED}\2|" \
+  Dockerfile
+
 #docker builder prune -a -f
 yes | docker image prune --all
 yes | docker builder prune --all
@@ -15,8 +21,6 @@ yes | docker builder prune --all
 docker build -t rk3566-monitor-copilot .
 
 docker compose -f docker-compose.yml up -d --remove-orphans
-
-sleep 5
 
 VERSION=$(grep 'org.opencontainers.image.version' Dockerfile | sed -E 's/.*version="([^"]+)".*/\1/')
 docker tag rk3566-monitor-copilot:latest zot.salvetti.info/rk3566-monitor-copilot:${VERSION}
