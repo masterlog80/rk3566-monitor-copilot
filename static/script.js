@@ -46,7 +46,6 @@ const history = {
   labels:      [],   // Unix timestamps (ms)
   cpu:         [],
   mem:         [],
-  temp:        [],
   npu:         [],
   freq:        [],   // CPU frequency (MHz)
 };
@@ -188,7 +187,7 @@ function makeTempLine(id) {
         x: { display: false },
         y: {
           min: 0,
-          max: 100,
+          max: 120,   // RK3566/RK3588 can briefly exceed 100°C
           ticks: { callback: v => v + "°" },
           grid: { color: "#21262d" },
         },
@@ -651,15 +650,7 @@ function render(data) {
 
   elLastUpdate.textContent = "Last update: " + new Date(timestamp * 1000).toLocaleTimeString();
 
-  // Populate image name + version once (idempotent – same value every tick)
-  const elImgVer = document.getElementById("image-version");
-  if (elImgVer && !elImgVer.dataset.set) {
-    const cfg  = window.SERVER_CONFIG || {};
-    const name = cfg.imageName    || "rk3566-monitor-copilot";
-    const ver  = cfg.imageVersion || "?";
-    elImgVer.textContent = "Image: " + name + ":" + ver;
-    elImgVer.dataset.set = "1";
-  }
+
 }
 
 // ── WebSocket connection ──────────────────────────────────────────────────
@@ -832,17 +823,27 @@ async function confirmResetLog() {
     historyWindowSeconds = parseInt(smallest.dataset.seconds, 10);
   }
 
-  // 2. Pre-populate history chart from the CSV log.
+  // 2. Populate image name + version immediately from SERVER_CONFIG —
+  //    before the first WebSocket tick so it's visible on page load.
+  const elImgVer = document.getElementById("image-version");
+  if (elImgVer) {
+    const cfg  = window.SERVER_CONFIG || {};
+    const name = cfg.imageName    || "rk3566-monitor-copilot";
+    const ver  = cfg.imageVersion || "?";
+    elImgVer.textContent = "Image: " + name + ":" + ver;
+  }
+
+  // 3. Pre-populate history chart from the CSV log.
   await loadHistory();
 
-  // 3. Start live data stream (WebSocket preferred, polling fallback).
+  // 4. Start live data stream (WebSocket preferred, polling fallback).
   if (typeof io !== "undefined") {
     connectWebSocket();
   } else {
     startPolling();
   }
 
-  // 4. Keep log file size refreshed.
+  // 5. Keep log file size refreshed.
   refreshLogSize();
   setInterval(refreshLogSize, 60000);
 })();
