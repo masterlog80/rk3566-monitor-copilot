@@ -16,7 +16,7 @@ from prometheus_client import Gauge, generate_latest, CONTENT_TYPE_LATEST
 load_dotenv()
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
@@ -198,16 +198,31 @@ def _detect_image_info() -> tuple[str, str]:
             k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST",
                                       "kubernetes.default.svc")
             k8s_port = int(os.environ.get("KUBERNETES_SERVICE_PORT", "443"))
-            ctx  = ssl.create_default_context(cafile=ca_path)
-            conn = http.client.HTTPSConnection(k8s_host, k8s_port, context=ctx)
-            conn.request(
-                "GET",
-                f"/api/v1/namespaces/{ns}/pods/{pod_name}",
-                headers={"Authorization": f"Bearer {token}",
-                         "Accept": "application/json"},
-            )
-            resp = conn.getresponse()
-            if resp.status == 403:
+            # Use raw sockets + ssl.wrap — http.client has no Unix/TLS
+            # socket support that works here.
+            ctx      = ssl.create_default_context(cafile=ca_path)
+            raw_sock = socket.create_connection((k8s_host, k8s_port), timeout=5)
+            tls_sock = ctx.wrap_socket(raw_sock, server_hostname=k8s_host)
+            tls_sock.sendall((
+                f"GET /api/v1/namespaces/{ns}/pods/{pod_name} HTTP/1.0\r\n"
+                f"Host: {k8s_host}\r\n"
+                f"Authorization: Bearer {token}\r\n"
+                f"Accept: application/json\r\n"
+                f"\r\n"
+            ).encode())
+            buf = b""
+            while True:
+                chunk = tls_sock.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+            tls_sock.close()
+            sep = buf.find(b"\r\n\r\n")
+            if sep == -1:
+                return None
+            status_line = buf[:buf.find(b"\r\n")].decode(errors="replace")
+            status = int(status_line.split(" ", 2)[1])
+            if status == 403:
                 logger.warning(
                     "k8s API returned 403 for pod %s/%s – bind a Role granting "
                     "'get' on 'pods' to the pod's ServiceAccount "
@@ -215,10 +230,11 @@ def _detect_image_info() -> tuple[str, str]:
                     ns, pod_name,
                 )
                 return None
-            if resp.status != 200:
+            if status != 200:
+                logger.warning("k8s API returned HTTP %d for pod %s/%s",
+                               status, ns, pod_name)
                 return None
-            pod  = json.loads(resp.read().decode())
-            conn.close()
+            pod = json.loads(buf[sep + 4:].decode("utf-8", errors="replace"))
             # status.containerStatuses has the resolved tag; fall back to spec
             statuses = pod.get("status", {}).get("containerStatuses", [])
             specs    = pod.get("spec",   {}).get("containers", [])
@@ -318,10 +334,9 @@ def _get_cpu_temp() -> float | None:
     # Standard Linux thermal zone path used by most ARM SBCs
     for zone in range(10):
         path = f"/sys/class/thermal/thermal_zone{zone}/type"
-        try:
-            zone_type = _read_proc_file(path)
-        except OSError:
-            break
+        zone_type = _read_proc_file(path)
+        if not zone_type:
+            break   # no more thermal zones
         if "cpu" in zone_type.lower() or zone == 0:
             temp_raw = _read_proc_file(
                 f"/sys/class/thermal/thermal_zone{zone}/temp"
@@ -347,10 +362,9 @@ def _get_gpu_temp() -> float | None:
     """Return the GPU temperature in °C from the thermal zone, or None."""
     for zone in range(10):
         path = f"/sys/class/thermal/thermal_zone{zone}/type"
-        try:
-            zone_type = _read_proc_file(path)
-        except OSError:
-            break
+        zone_type = _read_proc_file(path)
+        if not zone_type:
+            break   # no more thermal zones
         if "gpu" in zone_type.lower():
             temp_raw = _read_proc_file(
                 f"/sys/class/thermal/thermal_zone{zone}/temp"
@@ -443,9 +457,11 @@ def _append_metrics_to_csv(data: dict) -> None:
     parent_dir = os.path.dirname(file_path)
     if parent_dir:
         os.makedirs(parent_dir, exist_ok=True)
-    write_header = not os.path.exists(file_path)
     try:
         with open(file_path, "a", newline="") as fh:
+            # Detect empty file atomically inside the same open() call,
+            # avoiding a TOCTOU race between os.path.exists() and open().
+            write_header = fh.tell() == 0
             writer = csv.writer(fh)
             if write_header:
                 writer.writerow(_CSV_HEADER)
@@ -752,19 +768,23 @@ def api_history():
     Query parameters
     ----------------
     window : int, optional
-        Seconds of history to return, counted back from now.
+        Seconds of history to return, counted back from *now*.
         Defaults to the full retention window (RETENTION_DAYS).
         Example: ``?window=3600`` returns only the last hour.
+    since : int, optional
+        Unix timestamp (seconds).  Return only rows with timestamp >= since.
+        Takes precedence over ``window`` when both are supplied.  Used by
+        the client when the user zooms into a historical range and needs
+        native-resolution data for that exact slice.
+    until : int, optional
+        Unix timestamp (seconds).  Return only rows with timestamp <= until.
+        Defaults to *now*.  Combined with ``since`` this allows the client
+        to request an arbitrary past window.
     max_points : int, optional
         Maximum number of rows in the response (default: 2000).
         When the matching rows exceed this limit the server evenly
         down-samples them (pick every N-th row) so that the JSON
-        payload – and the browser's memory footprint – stays bounded
-        regardless of how long the service has been running.
-
-    Without these parameters the old behaviour is preserved, but callers
-    are encouraged to pass both to avoid loading the full CSV into the
-    browser on every page open.
+        payload stays bounded regardless of CSV file size.
     """
 
     def _float_or_none(val):
