@@ -40,6 +40,12 @@ services:
       - /sys:/sys:ro
       - /etc/hostname:/etc/hostname:ro
       - /mnt/DOCKER/volumes/rk3566-monitor-copilot/data:/data
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
 ############
